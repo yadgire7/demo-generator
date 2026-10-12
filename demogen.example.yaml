@@ -1,0 +1,25 @@
+# Copy to demogen.yaml (or pass --config). Every key is optional.
+auto_approve: false        # skip the plan and story approval pauses
+max_rewrite_rounds: 2      # how often narration that overruns its step is rewritten
+target_wps: 3.0            # how fast the voice reads (words per second); sizes the narration
+keyframe_max_edge: 1920    # frames are scaled to this before the vision model sees them (max 2576)
+
+# One model per role. `provider` is an installed LLM plugin:
+#   anthropic  Claude through the official SDK (reads ANTHROPIC_API_KEY)
+#   litellm    any LiteLLM model string (openai/..., gemini/..., ollama/..., ...)
+models:
+  planner: { provider: anthropic, model: claude-opus-5-5 }   # drives the browser in rehearsal
+  vision:  { provider: anthropic, model: claude-opus-5-5 }   # reports what the recorded frames show
+  writer:  { provider: anthropic, model: claude-opus-5-5 }   # writes the narration
+
+recording:
+  headless: true           # false shows the browser window while rehearsing and recording
+  fps: 30
+  crf: 18                  # video quality: lower is sharper and larger (0-51)
+  max_heals: 2             # how often a take that breaks may be repaired and retried
+
+voice:
+  tts: { provider: kokoro, voice: af_heart, speed: 1.0 }     # af_/am_ American, bf_/bm_ British voices
+  stt: { provider: faster_whisper, model: base.en }          # hears each clip back to check it
+  max_wer: 0.3             # a clip heard this far from its script is voiced again
+  max_attempts: 2

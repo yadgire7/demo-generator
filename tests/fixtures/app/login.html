@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sign in</title></head>
+<body>
+<h1>Sign in</h1>
+<form id="login">
+  <label>Username <input type="text" id="user"></label>
+  <label>Password <input type="password" id="pass"></label>
+  <button>Sign in</button>
+</form>
+<p id="error"></p>
+<script>
+document.getElementById('login').onsubmit = (e) => {
+  e.preventDefault();
+  const user = document.getElementById('user').value;
+  if (document.getElementById('pass').value !== 'correct-horse') {
+    document.getElementById('error').textContent = 'Wrong password';
+    return;
+  }
+  localStorage.setItem('user', user);
+  location.href = 'private.html';
+};
+</script>
+</body>
+</html>

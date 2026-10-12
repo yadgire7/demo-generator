@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Reports</title></head>
+<body>
+<h1 id="hello"></h1>
+<button id="create">Create report</button>
+<p id="result"></p>
+<script>
+const user = localStorage.getItem('user');
+if (!user) location.href = 'login.html';
+document.getElementById('hello').textContent = 'Welcome, ' + user;
+document.getElementById('create').onclick = () => { document.getElementById('result').textContent = 'Report created'; };
+</script>
+</body>
+</html>

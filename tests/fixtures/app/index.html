@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tasks</title>
+<style>
+  body { font: 18px/1.5 system-ui, sans-serif; max-width: 640px; margin: 48px auto; color: #1d1d1f; }
+  form { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; font: inherit; padding: 8px 12px; }
+  button { font: inherit; padding: 8px 16px; }
+  ul { list-style: none; padding: 0; }
+  li { padding: 8px 0; border-bottom: 1px solid #ddd; }
+  li.done span { text-decoration: line-through; color: #888; }
+  nav a { margin-right: 12px; }
+  .spacer { height: 1400px; }
+</style>
+</head>
+<body>
+<h1>Tasks</h1>
+<form id="new"><input type="text" id="title" placeholder="What needs doing?" aria-label="New task"><button>Add</button></form>
+<ul id="list"></ul>
+<p id="count">0 left</p>
+<nav><a href="#all">All</a><a href="#active">Active</a></nav>
+<div class="spacer"></div>
+<button id="archive">Archive all</button>
+<p id="status"></p>
+<div id="toast" style="position:fixed;top:16px;right:16px;padding:16px 32px;background:#1d6f42;color:#fff;font-size:24px;display:none">Task saved</div>
+<script>
+const tasks = [];
+const list = document.getElementById('list');
+function render() {
+  const onlyActive = location.hash === '#active';
+  list.replaceChildren(...tasks.filter(t => !(onlyActive && t.done)).map(t => {
+    const li = document.createElement('li');
+    li.className = t.done ? 'done' : '';
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: t.done });
+    box.setAttribute('aria-label', 'Done: ' + t.title);
+    box.onchange = () => { t.done = box.checked; render(); };
+    li.append(box, ' ', Object.assign(document.createElement('span'), { textContent: t.title }));
+    return li;
+  }));
+  document.getElementById('count').textContent = tasks.filter(t => !t.done).length + ' left';
+}
+document.getElementById('new').onsubmit = (e) => {
+  e.preventDefault();
+  const input = document.getElementById('title');
+  if (input.value.trim()) tasks.push({ title: input.value.trim(), done: false });
+  input.value = '';
+  render();
+  const toast = document.getElementById('toast');
+  toast.style.display = 'block';
+  setTimeout(() => { toast.style.display = 'none'; }, 500);
+};
+document.getElementById('archive').onclick = () => { tasks.length = 0; render(); document.getElementById('status').textContent = 'Everything archived'; };
+onhashchange = render;
+</script>
+</body>
+</html>

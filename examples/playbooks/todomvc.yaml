@@ -1,0 +1,33 @@
+version: 1
+name: TodoMVC in thirty seconds
+target:
+  kind: web
+  base_url: https://demo.playwright.dev/todomvc
+  viewport: { width: 1440, height: 900, device_scale_factor: 2 }
+intent:
+  audience: developers evaluating the app
+  tone: friendly, brisk
+  key_messages:
+    - Adding and completing a task takes seconds
+  cta: Try it yourself
+steps:
+  - id: add-first
+    do: "Add a todo called 'Write the playbook'"
+    expect: "The list shows one item: Write the playbook"
+    say_hint: "Start by typing what needs doing."
+    dwell: 1.5s
+  - id: add-second
+    do: "Add a todo called 'Record the demo'"
+    expect: "The list shows two items"
+    say_hint: "Add as many as you like."
+  - id: complete-first
+    do: "Mark 'Write the playbook' as completed"
+    expect: "Write the playbook is struck through and the counter says 1 item left"
+    say_hint: "One click marks it done."
+    focus: "the items-left counter"
+  - id: filter-active
+    do: "Show only active todos"
+    expect: "Only Record the demo is visible"
+    say_hint: "Filters keep the list focused on what is left."
+    action:
+      - click: { role: link, name: Active }

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "demogen"
+version = "0.1.0"
+description = "Turn a YAML playbook and an author's intent into a narrated product-demo video."
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=1.2",
+  "langgraph-checkpoint-sqlite>=3.1",
+  "anthropic>=1.13",
+  "litellm>=1.100",
+  "numpy>=1.26",
+  "playwright>=1.59",
+  "python-dotenv>=1",
+  "pydantic>=2.9",
+  "pyyaml>=6",
+  "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# The default speech engines. Other engines are plugins and need neither.
+voice = ["kokoro>=0.9.4", "faster-whisper>=1.2"]
+
+[project.scripts]
+demogen = "demogen.cli:app"
+
+[project.entry-points."demogen.llm"]
+anthropic = "demogen.llm.anthropic_provider:AnthropicProvider"
+litellm = "demogen.llm.litellm_provider:LiteLLMProvider"
+
+[project.entry-points."demogen.tts"]
+kokoro = "demogen.voice.tts.kokoro:KokoroTTS"
+
+[project.entry-points."demogen.stt"]
+faster_whisper = "demogen.voice.stt.faster_whisper:FasterWhisperSTT"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/demogen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Noise from the speech model libraries, not from this project.
+filterwarnings = [
+  "ignore::DeprecationWarning:misaki.*",
+  "ignore::FutureWarning:torch.*",
+  "ignore::UserWarning:torch.*",
+]
