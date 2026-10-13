@@ -4,7 +4,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from demogen.stages import REGISTRY, StageContext, StageSpec
-from demogen.store.cache import StageCache, cache_key
+from demogen.exec.base import result_key
+from demogen.store.cache import StageCache
 
 
 class LocalExecutor:
@@ -16,7 +17,7 @@ class LocalExecutor:
     def run(self, stage_name: str, ctx: StageContext, inputs: dict[str, Any]) -> dict[str, Any]:
         spec = self.registry[stage_name]
         cache = StageCache(ctx.store)
-        key = cache_key(spec.name, spec.version, ctx.config.fingerprint(spec.config_keys), inputs)
+        key = result_key(spec, ctx, inputs)
         cached = cache.get(spec.name, key)
         if cached is not None:
             return cached

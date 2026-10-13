@@ -131,7 +131,7 @@ def test_broken_step_is_repaired_and_the_take_restarts(harness, scripted_llm, ap
     assert status.awaiting["kind"] == "story"
     repaired = Plan.model_validate(h.json("r1", "actions.lock.json")).steps[1]
     assert repaired.actions[0].target[0].name == "Done: Ship it"
-    assert h.runtime._context("r1").store.verify(status.state["plan"])  # the run now points at the repaired plan
+    assert h.runtime.context("r1").store.verify(status.state["plan"])  # the run now points at the repaired plan
     # One clean take made it to disk: both steps, each clicked once.
     assert [e["step_id"] for e in _events(h) if e["type"] == "click"] == ["add-task", "add-task", "finish-task"]
 

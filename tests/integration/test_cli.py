@@ -49,3 +49,13 @@ def test_invalid_playbook_fails_before_a_run_exists(tmp_path):
     result = runner.invoke(app, ["run", str(bad), "--run-id", "demo", "--runs-dir", str(tmp_path / "runs")])
     assert result.exit_code == 1 and "steps" in result.output
     assert not (tmp_path / "runs" / "demo").exists()
+
+
+def test_service_commands_explain_missing_settings(monkeypatch):
+    monkeypatch.delenv("DEMOGEN_DATABASE_URL", raising=False)
+    for command in (["migrate"], ["worker", "--pool", "cpu"], ["serve"]):
+        result = runner.invoke(app, command)
+        assert result.exit_code == 1 and "DEMOGEN_DATABASE_URL is not set" in result.output
+    assert "unknown pool 'gpus'" in runner.invoke(app, ["worker", "--pool", "gpus"]).output
+    both = runner.invoke(app, ["worker", "--pool", "control", "--pool", "cpu", "--concurrency", "1"])
+    assert both.exit_code == 1 and "needs --concurrency 2 or more" in both.output

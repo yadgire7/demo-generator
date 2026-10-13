@@ -98,7 +98,7 @@ def _check_final(ctx: StageContext, inputs: dict[str, Any], edl: EDL) -> dict[st
     return check
 
 
-@stage("final_qa", config_keys=("voice.stt", "voice.max_wer"))
+@stage("final_qa", pool="gpu", config_keys=("voice.stt", "voice.max_wer"))  # it listens to the result with the speech model
 def final_qa(ctx: StageContext, inputs: dict[str, Any]) -> dict[str, Any]:
     edl = ctx.store.get_json(inputs["edl"])
     report = {

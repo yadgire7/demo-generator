@@ -29,6 +29,7 @@ class ArtifactStore(Protocol):
     def put_file(self, path: str, source: Path) -> ArtifactRef: ...
     def local_path(self, ref: ArtifactRef) -> Path: ...
     def verify(self, ref: ArtifactRef) -> bool: ...
+    def sha256(self, path: str) -> str: ...
     def delete_prefix(self, prefix: str) -> None: ...
 
     def put_json(self, path: str, obj: Any) -> ArtifactRef:
@@ -69,6 +70,10 @@ class LocalArtifactStore(ArtifactStore):
 
     def get_bytes(self, path: str) -> bytes:
         return self._resolve(path).read_bytes()
+
+    def sha256(self, path: str) -> str:
+        """The hash of the artifact stored at `path`. Raises FileNotFoundError if there is none."""
+        return _file_sha256(self._resolve(path))
 
     def verify(self, ref: ArtifactRef) -> bool:
         full = self._resolve(ref["path"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -42,7 +43,7 @@ def _report(status: RunStatus, runs_dir: Path) -> None:
 
 def _run(runs_dir: Path, action) -> None:
     load_env()
-    runtime = Runtime(runs_dir)
+    runtime = Runtime.local(runs_dir)
     try:
         _report(action(runtime), runs_dir)
     except (DemogenError, ValidationError, yaml.YAMLError) as error:
@@ -99,6 +100,64 @@ def rerun(
 ) -> None:
     """Run again from a given stage. Earlier stages are not repeated."""
     _run(runs_dir, lambda rt: rt.rerun(run_id, from_node, intent))
+
+
+def _service():
+    """The service handle, built from the environment. Needs the `service` extra installed."""
+    load_env()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        from demogen.service.core import Service
+        from demogen.service.settings import Settings
+    except ImportError as error:
+        typer.echo(f"error: the service parts are not installed ({error.name}). Install them with: pip install 'demogen[service]'", err=True)
+        raise typer.Exit(1)
+    try:
+        return Service(Settings.from_env())
+    except DemogenError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def migrate() -> None:
+    """Service: create the tables the service needs in Postgres. Safe to run again."""
+    _service().migrate()
+    typer.echo("database ready")
+
+
+@app.command()
+def worker(
+    pool: Annotated[list[str], typer.Option(help="A pool to take jobs from: control, browser, gpu or cpu. Repeat for several.")],
+    concurrency: Annotated[int, typer.Option(help="Jobs this worker runs at once.")] = 4,
+) -> None:
+    """Service: run a worker. `control` drives runs; the other pools run their stages."""
+    from demogen.service.core import POOLS
+
+    unknown = [name for name in pool if name not in POOLS]
+    if unknown:
+        typer.echo(f"error: unknown pool {unknown[0]!r}; choose from {', '.join(POOLS)}", err=True)
+        raise typer.Exit(1)
+    if "control" in pool and len(pool) > 1 and concurrency < 2:
+        typer.echo("error: a worker that both drives runs and runs their stages needs --concurrency 2 or more", err=True)
+        raise typer.Exit(1)
+    _service().run_worker(pool, concurrency)
+
+
+@app.command()
+def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Service: run the HTTP API."""
+    import uvicorn
+
+    from demogen.service.api import create_api
+
+    service = _service()
+    try:
+        with service.opened():
+            uvicorn.run(create_api(service), host=host, port=port)
+    except DemogenError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

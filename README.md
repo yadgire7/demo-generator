@@ -4,14 +4,16 @@ Turn a YAML playbook and an author's brief into a narrated product-demo video.
 
 The design, the research behind it and the milestones are in [docs/design.md](docs/design.md).
 
-## Status: M4 (finished videos)
+## Status: M5 (service), in progress
 
-A run now goes all the way: it rehearses the playbook in a real browser, records a clean
-take, looks at what the take shows, writes and voices narration sized to each step, and
-renders `final.mp4` with a pointer, click ripples, zoom, captions and the narration mixed in.
-You approve the plan before recording and the story before it is voiced.
+From the command line, a run goes all the way: it rehearses the playbook in a real browser,
+records a clean take, looks at what the take shows, writes and voices narration sized to each
+step, and renders `final.mp4` with a pointer, click ripples, zoom, captions and the narration
+mixed in. You approve the plan before recording and the story before it is voiced.
 
-Still to come (M5): running as a service with worker pools, Postgres and object storage.
+The same pipeline also runs as a service: an HTTP API, a Postgres-backed job queue and worker
+pools, with artifacts in S3-compatible storage. See [Running as a service](#running-as-a-service).
+Not built yet: tracing, and a tested container setup (the files in `deploy/` are untested).
 
 How recording works:
 
@@ -98,10 +100,62 @@ directory (git ignores it).
 Runs live in `./runs/<run-id>/` (override with `--runs-dir` or `DEMOGEN_RUNS_DIR`).
 Settings come from `./demogen.yaml`; see [demogen.example.yaml](demogen.example.yaml).
 
+## Running as a service
+
+Install the extra (`pip install -e ".[service,voice]"`) and point every process at the same
+Postgres and bucket:
+
+```bash
+export DEMOGEN_DATABASE_URL=postgresql://user:pass@host:5432/demogen
+export DEMOGEN_S3_BUCKET=demogen            # unset: artifacts stay in DEMOGEN_RUNS_DIR (one machine only)
+export DEMOGEN_S3_ENDPOINT=http://host:9000 # for MinIO and the like; unset means AWS
+export DEMOGEN_API_TOKEN=choose-a-long-random-string
+export DEMOGEN_CONFIG=/path/to/demogen.yaml # settings for runs started without their own
+```
+
+Then, each in its own process (or container, or machine):
+
+```bash
+demogen migrate                                          # once: creates the tables
+demogen worker --pool control --pool cpu --concurrency 8  # drives runs; cheap stages and rendering
+demogen worker --pool browser --concurrency 1             # rehearsal and recording (needs Chromium)
+demogen worker --pool gpu --concurrency 2                 # speech (needs the voice extra)
+demogen serve --host 0.0.0.0 --port 8000
+```
+
+A run over HTTP, with `Authorization: Bearer $DEMOGEN_API_TOKEN` on every request:
+
+| Request | What it does |
+|---|---|
+| `POST /runs` (form: `playbook`, optional `intent`, `config`, `run_id`) | Start a run |
+| `GET /runs`, `GET /runs/{id}` | List runs; one run's phase, what it waits on, and its artifacts |
+| `POST /runs/{id}/approve` (optional body: the edited plan or story) | Approve the plan or story |
+| `POST /runs/{id}/resume` | Continue a run that failed |
+| `POST /runs/{id}/rerun` (JSON: `from_stage`, optional `intent`) | Run again from a stage |
+| `GET /runs/{id}/artifacts/{path}` | Download an artifact, such as `final.mp4` |
+
+How it holds together:
+
+- **Pools.** A `control` worker drives each run and hands every stage to the pool it belongs
+  to. Stages are idempotent and their results are cached in the run's storage, so a job that
+  runs twice does no harm.
+- **Failures.** A stage that fails stops its run with the reason shown in `GET /runs/{id}`;
+  `resume` picks up from there. A worker that dies mid-job is noticed within about a minute
+  and its job is given to another.
+- **One step at a time.** Requests that would change a run while it is busy are refused (409).
+- **Housekeeping.** Checkpoints of runs finished more than `DEMOGEN_CHECKPOINT_TTL_DAYS`
+  (default 30) ago are deleted. Artifacts are kept; such a run can no longer be resumed or rerun.
+- **Access.** One shared token: anyone who has it can see and change every run. Saved
+  sign-in sessions (`auth/`) are never served.
+
+`deploy/Dockerfile` and `deploy/compose.yaml` describe this layout for Docker. They were
+written without Docker to hand and have not been built or run.
+
 ## Layout
 
 - `src/demogen/stages/`: the pipeline's stages, as plain functions over artifact references.
-- `src/demogen/exec/`: where stages run (in-process today; worker pools later).
+- `src/demogen/exec/`: where stages run (in this process, or queued to a worker pool).
+- `src/demogen/service/`: the HTTP API, the worker tasks and the list of runs.
 - `src/demogen/graph/`: the LangGraph control plane. Nothing else imports LangGraph.
 - `src/demogen/llm/`: the provider-neutral LLM interface, the tool loop, and the Anthropic and
   LiteLLM adapters.
@@ -111,7 +165,7 @@ Settings come from `./demogen.yaml`; see [demogen.example.yaml](demogen.example.
 - `src/demogen/voice/`: clip trimming, the heard-back check, and the speech engine plugins.
 - `src/demogen/timeline/`: the planner that fits narration to footage, and the edit list.
 - `src/demogen/editor/`: the compositor (zoom, pointer, ripples, captions) and audio mix.
-- `src/demogen/store/`: artifact storage and the content-addressed stage cache.
+- `src/demogen/store/`: artifact storage (local folders or S3) and the content-addressed stage cache.
 
 ## Test
 
@@ -121,4 +175,5 @@ Settings come from `./demogen.yaml`; see [demogen.example.yaml](demogen.example.
 
 The browser tests drive a small fixture app in `tests/fixtures/app` with a scripted model, so
 the suite needs Chromium and ffmpeg but no API key. Tests that use the real speech engines
-need the `voice` extra installed.
+need the `voice` extra installed. The service tests start their own throwaway Postgres and
+MinIO, and are skipped if those are not installed.

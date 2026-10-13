@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import glob
 import json
+import os
 import re
+import shutil
+import socket
+import subprocess
 import threading
+import time
+import uuid
 from collections import Counter
 from dataclasses import replace
 from functools import partial
@@ -134,7 +141,7 @@ class Harness:
             name: replace(spec, fn=self._counted(name, {**fakes, **(overrides or {})}.get(name, spec.fn)))
             for name, spec in REGISTRY.items()
         }
-        self.runtime = Runtime(runs_dir, LocalExecutor(self.registry))
+        self.runtime = Runtime.local(runs_dir, LocalExecutor(self.registry))
         self.runs_dir = runs_dir
 
     def _counted(self, name, fn):
@@ -148,7 +155,7 @@ class Harness:
         return self.runtime.start(playbook, intent, Config(**config), run_id)
 
     def json(self, run_id: str, path: str):
-        return self.runtime._context(run_id).store.get_json(path)
+        return self.runtime.context(run_id).store.get_json(path)
 
     def path(self, run_id: str, path: str) -> Path:
         return self.runs_dir / run_id / path
@@ -273,3 +280,106 @@ def pinned_playbook(app_url, tmp_path) -> Path:
     path = tmp_path / "pinned.yaml"
     path.write_text(PINNED.format(url=app_url))
     return path
+
+
+# --- The service's own infrastructure: a throwaway Postgres and MinIO, started for the session.
+
+
+def _find(binary: str) -> str | None:
+    """A server binary on the PATH or where Homebrew and Debian keep Postgres."""
+    found = shutil.which(binary)
+    if found:
+        return found
+    for pattern in ("/opt/homebrew/opt/postgresql@*/bin", "/usr/local/opt/postgresql@*/bin", "/usr/lib/postgresql/*/bin"):
+        for folder in sorted(glob.glob(pattern), reverse=True):
+            if os.path.exists(f"{folder}/{binary}"):
+                return f"{folder}/{binary}"
+    return None
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.fixture(scope="session")
+def postgres_server(tmp_path_factory):
+    initdb, pg_ctl = _find("initdb"), _find("pg_ctl")
+    if not (initdb and pg_ctl):
+        pytest.skip("Postgres is not installed")
+    data, port = tmp_path_factory.mktemp("postgres"), _free_port()
+    env = {**os.environ, "LC_ALL": "C"}  # without a fixed locale, Postgres on macOS refuses to start
+    subprocess.run([initdb, "-D", str(data), "-U", "demogen", "--auth=trust", "-E", "UTF8", "--locale=C"], check=True, capture_output=True, env=env)
+    options = f"-p {port} -c listen_addresses=127.0.0.1 -c unix_socket_directories='' -c max_connections=200"
+    subprocess.run([pg_ctl, "-D", str(data), "-o", options, "-l", str(data / "server.log"), "-w", "start"], check=True, capture_output=True, env=env)
+    yield f"postgresql://demogen@127.0.0.1:{port}"
+    subprocess.run([pg_ctl, "-D", str(data), "-m", "immediate", "stop"], capture_output=True, env=env)
+
+
+@pytest.fixture
+def database_url(postgres_server):
+    """A fresh, empty database for one test."""
+    import psycopg
+
+    name = f"t_{uuid.uuid4().hex[:12]}"
+    with psycopg.connect(f"{postgres_server}/postgres", autocommit=True) as connection:
+        connection.execute(f"CREATE DATABASE {name}")
+    return f"{postgres_server}/{name}"
+
+
+@pytest.fixture(scope="session")
+def minio_server(tmp_path_factory):
+    minio = _find("minio")
+    if not minio:
+        pytest.skip("MinIO is not installed")
+    import boto3
+
+    port = _free_port()
+    keys = {"AWS_ACCESS_KEY_ID": "demogen", "AWS_SECRET_ACCESS_KEY": "demogen-secret", "AWS_DEFAULT_REGION": "us-east-1"}
+    env = {**os.environ, "MINIO_ROOT_USER": keys["AWS_ACCESS_KEY_ID"], "MINIO_ROOT_PASSWORD": keys["AWS_SECRET_ACCESS_KEY"]}
+    server = subprocess.Popen(
+        [minio, "server", str(tmp_path_factory.mktemp("minio")), "--address", f"127.0.0.1:{port}", "--console-address", f"127.0.0.1:{_free_port()}"],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )  # fmt: skip
+    endpoint = f"http://127.0.0.1:{port}"
+    client = boto3.client("s3", endpoint_url=endpoint, aws_access_key_id=keys["AWS_ACCESS_KEY_ID"], aws_secret_access_key=keys["AWS_SECRET_ACCESS_KEY"], region_name="us-east-1")
+    for _ in range(100):
+        try:
+            client.list_buckets()
+            break
+        except Exception:
+            time.sleep(0.1)
+    else:
+        server.kill()
+        pytest.fail("MinIO did not start")
+    yield {"endpoint": endpoint, "client": client, "env": keys}
+    server.kill()
+    server.wait()
+
+
+@pytest.fixture
+def bucket(minio_server, monkeypatch):
+    """A fresh bucket for one test, with the credentials in the environment as a deployment would have them."""
+    for key, value in minio_server["env"].items():
+        monkeypatch.setenv(key, value)
+    name = f"t-{uuid.uuid4().hex[:12]}"
+    minio_server["client"].create_bucket(Bucket=name)
+    return name
+
+
+def all_fakes() -> dict:
+    """The stage registry with every slow stage replaced by its stand-in: a whole run in milliseconds."""
+    stand_ins = {name: fn for stages in FAKES.values() for name, fn in stages.items()}
+    return {name: replace(spec, fn=stand_ins.get(name, spec.fn)) for name, spec in REGISTRY.items()}
+
+
+def wait_for(condition, *, timeout: float = 20.0, what: str = "the condition"):
+    """Poll until `condition()` returns something truthy, and return it."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        value = condition()
+        if value:
+            return value
+        time.sleep(0.05)
+    raise AssertionError(f"timed out after {timeout}s waiting for {what}")

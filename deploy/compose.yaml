@@ -1,0 +1,78 @@
+# UNTESTED: written without Docker available. The same layout was run by hand on one machine
+# (Postgres and MinIO from Homebrew, three `demogen worker` processes and `demogen serve`).
+#
+#   export ANTHROPIC_API_KEY=...   DEMOGEN_API_TOKEN=...
+#   docker compose -f deploy/compose.yaml up --build
+#
+# Each worker needs only what its pool uses: Chromium for `browser`, the speech models for
+# `gpu`, and the model API key wherever a stage calls an LLM (browser and cpu).
+
+x-demogen: &demogen
+  environment: &environment
+    DEMOGEN_DATABASE_URL: postgresql://demogen:demogen@postgres:5432/demogen
+    DEMOGEN_S3_BUCKET: demogen
+    DEMOGEN_S3_ENDPOINT: http://minio:9000
+    DEMOGEN_API_TOKEN: ${DEMOGEN_API_TOKEN:?set DEMOGEN_API_TOKEN}
+    DEMOGEN_CONFIG: /app/demogen.yaml
+    AWS_ACCESS_KEY_ID: demogen
+    AWS_SECRET_ACCESS_KEY: demogen-secret
+    AWS_DEFAULT_REGION: us-east-1
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  volumes:
+    - ../demogen.example.yaml:/app/demogen.yaml:ro
+  depends_on:
+    migrate: { condition: service_completed_successfully }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17
+    environment: { POSTGRES_USER: demogen, POSTGRES_PASSWORD: demogen, POSTGRES_DB: demogen }
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "demogen"], interval: 2s, retries: 30 }
+
+  minio:
+    image: minio/minio
+    command: server /data
+    environment: { MINIO_ROOT_USER: demogen, MINIO_ROOT_PASSWORD: demogen-secret }
+    volumes: [minio:/data]
+
+  bucket:
+    image: minio/mc
+    depends_on: [minio]
+    entrypoint: sh -c "until mc alias set local http://minio:9000 demogen demogen-secret; do sleep 1; done; mc mb --ignore-existing local/demogen"
+
+  migrate:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    command: migrate
+    environment: *environment
+    depends_on:
+      postgres: { condition: service_healthy }
+      bucket: { condition: service_completed_successfully }
+
+  api:
+    <<: *demogen
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    command: serve --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+
+  worker-control:
+    <<: *demogen
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    command: worker --pool control --pool cpu --concurrency 8
+
+  worker-browser:
+    <<: *demogen
+    build: { context: .., dockerfile: deploy/Dockerfile, args: { WITH_BROWSER: "true" } }
+    command: worker --pool browser --concurrency 1
+    shm_size: 1gb   # Chromium needs more shared memory than Docker's default
+
+  worker-gpu:
+    <<: *demogen
+    build: { context: .., dockerfile: deploy/Dockerfile, args: { EXTRAS: "service,voice" } }
+    command: worker --pool gpu --concurrency 2
+    volumes:
+      - ../demogen.example.yaml:/app/demogen.yaml:ro
+      - models:/root/.cache   # speech model weights, downloaded on first use
+
+volumes: { postgres: {}, minio: {}, models: {} }

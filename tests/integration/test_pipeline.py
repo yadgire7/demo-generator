@@ -102,7 +102,7 @@ def test_failed_stage_resumes_without_repeating_earlier_work(harness, playbook):
         return fake_qa_audio(ctx, inputs)
 
     h = harness({"qa_audio": flaky_qa})
-    with pytest.raises(RunError, match="demogen resume r1"):
+    with pytest.raises(RunError, match="Fix the cause, then resume it"):
         h.start(playbook, auto_approve=True)
     status = h.runtime.status("r1")
     assert status.phase == "incomplete" and status.next == ("qa_audio",)

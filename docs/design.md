@@ -406,5 +406,31 @@ Recorded as each milestone lands.
 - **Open, by design:** how freely narration may stretch footage. Kept as planned (hold up to
   1.6 times the step, then rewrite) pending a look at more real videos.
 
+**M5 (service), in progress**
+- **The queue is Procrastinate**, chosen over Hatchet and arq when M5 began: it keeps jobs in
+  the Postgres the service already needs, arq is now maintenance-only, and Hatchet is a
+  further service to run. Its lack of a dashboard is the cost.
+- **A stage's result does not travel through the queue.** The worker writes it to the run's
+  stage cache, which the control side reads once the job has succeeded. A failure's reason
+  travels the same way.
+- **The runtime is split into `prepare_*` and `advance`.** The API checks a request and stores
+  what it brings; a `control` worker runs the pipeline forward. The command line does both in
+  one process, through the same code.
+- **Job status is read with plain SQL.** Procrastinate's blocking status call deadlocks when
+  used inside one of its own workers, which is exactly where a run's driver waits on stages.
+- **Steps for one run are serialised** by a queue lock per run, and the API refuses changes
+  to a run that is busy.
+- **The reaper is a periodic job** on the control pool: it requeues jobs whose worker stopped
+  sending heartbeats, prunes old jobs, and expires old checkpoints. Verified by killing a
+  worker process mid-stage.
+- **`final_qa` runs on the `gpu` pool**, since it listens to the result with the speech model;
+  only gpu workers need the speech engines installed.
+- **Dropped: the Xvfb recorder.** The headless recorder already captures 60 frames a second
+  at 2x and needs nothing a container lacks.
+- **Verified** against Postgres 17 and MinIO installed locally, including a real run over
+  HTTP with three worker processes and real models (about a minute and a half, end to end).
+- **Not verified:** the Docker files, AWS S3 itself, more than one machine, and load.
+- **Not built:** tracing (Langfuse or OpenTelemetry), per-user access, a dashboard.
+
 ## Sources
 [aidemo](https://github.com/tandryukha/aidemo) · [ai-demo-generator-oss](https://github.com/grodriguez1983/ai-demo-generator-oss) · [Playwright 1.59 release](https://github.com/microsoft/playwright/releases/tag/v1.59.0) · [Playwright recordVideo bitrate issue #31424](https://github.com/microsoft/playwright/issues/31424) · [Puppeteer ScreenRecorder](https://app.unpkg.com/puppeteer-core@25.4.0/files/src/node/ScreenRecorder.ts) · [Playwright MCP vs CLI](https://morphllm.com/playwright-mcp) · [Stagehand/browser-use comparison](https://www.pkgpulse.com/guides/stagehand-vs-playwright-ai-vs-browser-use-ai-web-2026) · [Xvfb + ffmpeg recording](https://kroket.io/blog/recording-headless-firefox.html) · [LangGraph HITL](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) · [LangGraph vs Temporal](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) · [LiteLLM vs LangChain](https://toolhalla.ai/compare/langchain-vs-litellm) · [Open TTS 2026](https://pinggy.io/blog/best_open_source_self_hosted_text_to_speech_models/) · [Open-weight TTS licenses](https://builderai.tools/blog/open-weight-text-to-speech-models-2026) · [WhisperX](https://arxiv.org/abs/2303.00747v1) · [Parakeet vs Whisper](https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron) · [Frame sampling for VLMs](https://arxiv.org/pdf/2509.14769) · [Remotion vs ffmpeg](https://thegtmdirectory.com/compare/ffmpeg-vs-remotion) · [rrweb limits (Browserbase)](https://browserbase.com/blog/session-recordings) · [Durable engines compared (Upstash)](https://upstash.com/blog/durable-workflow-engines-compared-every-major-option-in-2026) · [Restate/DBOS/Hatchet beyond Temporal](https://cloudrps.com/blog/durable-execution-restate-dbos-hatchet-beyond-temporal/) · [DBOS workflows](https://docs.dbos.dev/python/tutorials/workflow-tutorial) · [DBOS pricing](https://www.dbos.dev/dbos-pricing) · [Temporal Cloud pricing](https://docs.temporal.io/cloud/pricing) · [Temporal self-host cost](https://automationatlas.io/guides/temporal-cloud-vs-self-hosted-2026/) · [Hatchet v1](https://hn.svelte.dev/item/43572733) · [Prefect pause/resume](https://docs.prefect.io/v3/develop/pause-resume) · [Burr persistence](https://burr.apache.org/concepts/state-persistence/) · [pydantic-graph persistence](https://ai.pydantic.dev/api/pydantic_graph/persistence) · [LlamaIndex durable workflows](https://developers.llamaindex.ai/python/workflows/durable_workflows/) · [LangGraph checkpointing postmortem](https://pub.towardsai.net/langgraph-checkpointing-is-not-free-a-production-postmortem-398bc86861f4) · [LangGraph Platform pricing](https://www.langchain.com/langgraph-platform-pricing)
