@@ -66,9 +66,9 @@ WIRING: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("story",),
     ),
     "qa_audio": (("story", "clips"), ("words",)),
-    "plan_timeline": (("windows", "clips"), ("edl", "flagged")),
-    "render": (("video", "events", "edl", "words"), ("final",)),
-    "final_qa": (("final", "edl", "flagged", "words"), ("report",)),
+    "plan_timeline": (("windows", "clips", "words", "events", "video"), ("edl", "flagged")),
+    "render": (("video", "events", "edl"), ("final",)),
+    "final_qa": (("final", "edl", "flagged", "words", "story"), ("report",)),
 }
 
 # Approval pauses: node -> (what is being approved, the state key holding it)

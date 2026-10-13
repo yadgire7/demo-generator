@@ -376,5 +376,35 @@ Recorded as each milestone lands.
   the next browser call. The recorder now drops late frames and reports a write failure when
   it is stopped. This affected takes that fail and are repaired on pages that keep repainting.
 
+**M4 (timeline and editor)**
+- **The compositor uses ffmpeg pipes and Pillow, not PyAV.** ffmpeg decodes the take to raw
+  frames and encodes the result; Pillow crops, scales and draws each frame in between. That
+  avoids a second media library (PyAV was already clashing with faster-whisper).
+- **Captions are drawn by the compositor, not by libass.** The Homebrew ffmpeg build has
+  neither the subtitle nor the text filter, so depending on them would not be portable.
+  Captions use Pillow's built-in sans unless `render.font` names a font file.
+- **Idle footage is never trimmed or sped up.** The plan allowed for cutting long static
+  waits; the edit list can express cuts, but the planner does not make them yet.
+- **A clip either fits, is sped up by at most 10%, or gets a held frame.** Narration is never
+  slowed down, and a held frame is always the settled end of the step.
+- **Zoom is per step and conservative.** It frames the elements the step acts on, goes in
+  just before the first action and comes out when the screen settles. It is skipped when the
+  targets are too far apart or the step is too brief. The playbook's `focus` hint is not used
+  yet: nothing resolves it to an element.
+- **Loudness is normalised in one pass** (`loudnorm` to -16 LUFS) while encoding.
+- **The pointer keeps a constant size** through zooms.
+- **Final check.** Besides length and word error rate on the final mix, drift is the median
+  difference between when a passage's words are heard and when they were planned. On the
+  TodoMVC example it was under 20 ms for every passage.
+- **The writer is also held to speakable characters**, after a stray `]` in a reply reached
+  a caption on the first full run.
+- **Fixed in passing (M3 bug):** Whisper sometimes heard a clip's last word twice ("Enter.
+  Enter.") because trimmed clips end right after the speech. About one clip in four was
+  affected on one passage; each still passed its check, with a word error rate of 0.11
+  instead of 0. The Whisper adapter now appends 0.6 s of silence before transcribing.
+- **`report.json` no longer lists stub stages**: there are none left.
+- **Open, by design:** how freely narration may stretch footage. Kept as planned (hold up to
+  1.6 times the step, then rewrite) pending a look at more real videos.
+
 ## Sources
 [aidemo](https://github.com/tandryukha/aidemo) · [ai-demo-generator-oss](https://github.com/grodriguez1983/ai-demo-generator-oss) · [Playwright 1.59 release](https://github.com/microsoft/playwright/releases/tag/v1.59.0) · [Playwright recordVideo bitrate issue #31424](https://github.com/microsoft/playwright/issues/31424) · [Puppeteer ScreenRecorder](https://app.unpkg.com/puppeteer-core@25.4.0/files/src/node/ScreenRecorder.ts) · [Playwright MCP vs CLI](https://morphllm.com/playwright-mcp) · [Stagehand/browser-use comparison](https://www.pkgpulse.com/guides/stagehand-vs-playwright-ai-vs-browser-use-ai-web-2026) · [Xvfb + ffmpeg recording](https://kroket.io/blog/recording-headless-firefox.html) · [LangGraph HITL](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) · [LangGraph vs Temporal](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) · [LiteLLM vs LangChain](https://toolhalla.ai/compare/langchain-vs-litellm) · [Open TTS 2026](https://pinggy.io/blog/best_open_source_self_hosted_text_to_speech_models/) · [Open-weight TTS licenses](https://builderai.tools/blog/open-weight-text-to-speech-models-2026) · [WhisperX](https://arxiv.org/abs/2303.00747v1) · [Parakeet vs Whisper](https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron) · [Frame sampling for VLMs](https://arxiv.org/pdf/2509.14769) · [Remotion vs ffmpeg](https://thegtmdirectory.com/compare/ffmpeg-vs-remotion) · [rrweb limits (Browserbase)](https://browserbase.com/blog/session-recordings) · [Durable engines compared (Upstash)](https://upstash.com/blog/durable-workflow-engines-compared-every-major-option-in-2026) · [Restate/DBOS/Hatchet beyond Temporal](https://cloudrps.com/blog/durable-execution-restate-dbos-hatchet-beyond-temporal/) · [DBOS workflows](https://docs.dbos.dev/python/tutorials/workflow-tutorial) · [DBOS pricing](https://www.dbos.dev/dbos-pricing) · [Temporal Cloud pricing](https://docs.temporal.io/cloud/pricing) · [Temporal self-host cost](https://automationatlas.io/guides/temporal-cloud-vs-self-hosted-2026/) · [Hatchet v1](https://hn.svelte.dev/item/43572733) · [Prefect pause/resume](https://docs.prefect.io/v3/develop/pause-resume) · [Burr persistence](https://burr.apache.org/concepts/state-persistence/) · [pydantic-graph persistence](https://ai.pydantic.dev/api/pydantic_graph/persistence) · [LlamaIndex durable workflows](https://developers.llamaindex.ai/python/workflows/durable_workflows/) · [LangGraph checkpointing postmortem](https://pub.towardsai.net/langgraph-checkpointing-is-not-free-a-production-postmortem-398bc86861f4) · [LangGraph Platform pricing](https://www.langchain.com/langgraph-platform-pricing)

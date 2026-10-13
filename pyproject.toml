@@ -13,6 +13,7 @@ dependencies = [
   "anthropic>=1.13",
   "litellm>=1.100",
   "numpy>=1.26",
+  "pillow>=10.1",
   "playwright>=1.59",
   "python-dotenv>=1",
   "pydantic>=2.9",

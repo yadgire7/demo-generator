@@ -10,7 +10,7 @@ import yaml
 
 from demogen.graph.runtime import RunError
 from demogen.stages import REGISTRY, StageError
-from tests.conftest import fake_qa_audio
+from tests.conftest import fake_plan_timeline, fake_qa_audio
 
 STEPS = ["add-first", "add-second", "complete-first", "filter-active"]
 ONCE_PER_RUN = [name for name in REGISTRY if name != "synthesize_step"]
@@ -24,7 +24,7 @@ def test_auto_approved_run_completes(harness, playbook):
     assert h.calls["synthesize_step"] == len(STEPS)
     assert set(status.state["clips"]) == set(STEPS)
     report = h.json("r1", "report.json")
-    assert report["steps"] == 4 and "render" in report["stub_stages"]
+    assert report["steps"] == 4 and report["final"] == {"video": None, "srt": None}  # the edit stages are stand-ins here
     assert [s["step_id"] for s in h.json("r1", "edl.json")["steps"]] == STEPS
 
 
@@ -138,7 +138,7 @@ def test_overrunning_narration_is_rewritten(harness, playbook, tmp_path):
 
 def test_rewrites_are_bounded(harness, playbook, tmp_path):
     def never_fits(ctx, inputs):
-        return {**REGISTRY["plan_timeline"].fn(ctx, inputs), "flagged": ["add-second"]}
+        return {**fake_plan_timeline(ctx, inputs), "flagged": ["add-second"]}
 
     h = harness({"plan_timeline": never_fits})
     status = h.start(playbook, auto_approve=True, max_rewrite_rounds=2)

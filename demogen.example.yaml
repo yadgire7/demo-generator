@@ -23,3 +23,11 @@ voice:
   stt: { provider: faster_whisper, model: base.en }          # hears each clip back to check it
   max_wer: 0.3             # a clip heard this far from its script is voiced again
   max_attempts: 2
+
+render:
+  height: 1080             # the finished video's height; null keeps the take's own size
+  crf: 18
+  zoom: 1.4                # how far to zoom in on what a step acts on; 1 turns zoom off
+  pointer: true
+  captions: true
+  # font: /path/to/font.ttf   # caption font; a built-in sans is used otherwise

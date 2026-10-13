@@ -76,6 +76,8 @@ def run_take(session: BrowserSession, playbook: Playbook, plan: Plan, video: Pat
                 raise StepFailed(step.step_id, str(error)) from error
             except PlaywrightError as error:
                 raise StepFailed(step.step_id, error.message.splitlines()[0]) from error
+            # From here to the step's end the screen is at rest, showing the step's result.
+            events.add("settled", step_id=step.step_id)
             page.wait_for_timeout(max(dwell.get(step.step_id, 0), MIN_STEP_REST_S) * 1000)
             events.add("step_end", step_id=step.step_id)
         page.wait_for_timeout(TAIL_MS)

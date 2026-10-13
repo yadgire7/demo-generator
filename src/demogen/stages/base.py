@@ -34,7 +34,6 @@ class StageSpec:
     version: int = 1
     pool: Pool = "cpu"
     config_keys: tuple[str, ...] = ()
-    stub: bool = False
 
 
 REGISTRY: dict[str, StageSpec] = {}
@@ -46,12 +45,11 @@ def stage(
     version: int = 1,
     pool: Pool = "cpu",
     config_keys: tuple[str, ...] = (),
-    stub: bool = False,
 ) -> Callable[[StageFn], StageFn]:
     """Register a stage. Bump `version` whenever its output for the same inputs would change."""
 
     def register(fn: StageFn) -> StageFn:
-        REGISTRY[name] = StageSpec(name, fn, version, pool, config_keys, stub)
+        REGISTRY[name] = StageSpec(name, fn, version, pool, config_keys)
         return fn
 
     return register

@@ -188,3 +188,9 @@ def test_checked_reply_stops_at_the_first_clean_answer():
 def test_checked_reply_without_structure_is_an_error():
     with pytest.raises(LLMError, match="structured reply"):
         complete_checked(_Counter(None), [], Story, lambda story: ([], []))
+
+
+def test_writer_is_sent_back_for_marks_a_voice_cannot_say():
+    llm = ScriptedLLM(replies=[_story("Capture it.]", "One click, done."), _story("Capture it.", "One click, done.")])
+    assert write_narration(llm, PLAYBOOK, INTENT, FACTS, BUDGETS).text_of("add") == "Capture it."
+    assert "the passage for add contains characters a voice cannot say: ]" in llm.transcript[-1]

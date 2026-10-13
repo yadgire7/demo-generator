@@ -94,7 +94,6 @@ def test_take_is_recorded_with_a_matching_event_log(harness, pinned_playbook):
 
     windows = h.json("r1", "windows.json")
     assert windows["add-task"]["end"] == windows["finish-task"]["start"]
-    assert h.json("r1", "report.json")["final"] == {"video": None, "srt": None}  # rendering is still a stub
 
 
 def test_scale_factor_sets_the_video_resolution(harness, pinned_playbook):

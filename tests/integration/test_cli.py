@@ -1,3 +1,5 @@
+import json
+
 import yaml
 from typer.testing import CliRunner
 
@@ -8,7 +10,10 @@ runner = CliRunner()
 
 
 def test_run_approve_approve(pinned_playbook, scripted_llm, tmp_path):
-    """Every real stage, start to finish, from the command line. The story models are scripted."""
+    """Every real stage, start to finish, from the command line: browser, speech engines, renderer.
+
+    Only the story models are scripted.
+    """
     scripted_llm.replies = [
         {"steps": [{"step_id": s, "happens": "It changes.", "on_screen": []} for s in ("add-task", "finish-task")]},
         {"steps": [{"step_id": "add-task", "text": "Add a task."}, {"step_id": "finish-task", "text": "Done."}]},
@@ -26,6 +31,13 @@ def test_run_approve_approve(pinned_playbook, scripted_llm, tmp_path):
     assert (run / "report.json").is_file() and (run / "raw.mp4").stat().st_size > 0
     assert (run / "keyframes" / "add-task" / "00.png").is_file()
     assert "Add a task." in (run / "story.json").read_text()
+    # The finished video: voiced, captioned, and checked against its own plan.
+    report = json.loads((run / "report.json").read_text())
+    assert report["final_check"]["problems"] == [] and report["final_check"]["narration_wer"] == 0
+    assert report["final_check"]["size"] == [800, 600] and report["audio_warnings"] == []
+    assert (run / "final.mp4").stat().st_size > 0
+    assert (run / "final.srt").read_text().startswith("1\n00:00:0")
+    assert "Add a task." in (run / "final.srt").read_text()
 
     again = runner.invoke(app, ["approve", "demo"], env=env)
     assert again.exit_code == 1 and "not waiting for approval" in again.output

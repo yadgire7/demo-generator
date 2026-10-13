@@ -53,6 +53,17 @@ class VoiceConfig(BaseModel):
     max_attempts: int = Field(default=2, ge=1)
 
 
+class RenderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    height: int | None = Field(default=1080, ge=240)  # the finished video's height; None keeps the take's
+    crf: int = Field(default=18, ge=0, le=51)
+    zoom: float = Field(default=1.4, ge=1)  # how far to zoom in on what a step acts on; 1 turns zoom off
+    pointer: bool = True
+    captions: bool = True
+    font: str | None = None  # a TrueType font file for captions; the built-in font if unset
+
+
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -66,6 +77,7 @@ class Config(BaseModel):
     models: dict[Role, ModelConfig] = {}
     recording: RecordingConfig = RecordingConfig()
     voice: VoiceConfig = VoiceConfig()
+    render: RenderConfig = RenderConfig()
 
     def fingerprint(self, keys: tuple[str, ...]) -> dict[str, Any]:
         """The slice of config a stage depends on, for its cache key. Keys are dotted paths."""

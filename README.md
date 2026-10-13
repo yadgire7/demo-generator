@@ -4,13 +4,14 @@ Turn a YAML playbook and an author's brief into a narrated product-demo video.
 
 The design, the research behind it and the milestones are in [docs/design.md](docs/design.md).
 
-## Status: M3 (voice)
+## Status: M4 (finished videos)
 
-A run now rehearses the playbook in a real browser, records a clean take, looks at what the
-take shows, writes narration sized to each step, and voices it. You approve the plan before
-recording and the story before it is voiced. **The timeline and rendering are still
-placeholders**, so the run ends with a recording and a set of narration clips, not yet one
-finished video. `report.json` lists the stages that are stubs.
+A run now goes all the way: it rehearses the playbook in a real browser, records a clean
+take, looks at what the take shows, writes and voices narration sized to each step, and
+renders `final.mp4` with a pointer, click ripples, zoom, captions and the narration mixed in.
+You approve the plan before recording and the story before it is voiced.
+
+Still to come (M5): running as a service with worker pools, Postgres and object storage.
 
 How recording works:
 
@@ -53,6 +54,20 @@ How the narration is voiced:
 - **Pace.** `target_wps` is how fast the voice reads; the writer sizes passages with it. The
   default (3.0) suits Kokoro's default voice. Change it if you change the voice or its speed.
 
+How the video is put together:
+
+- **Timeline.** Each clip plays from the start of its step. A clip that fits leaves the take
+  untouched; one up to 10% long is sped up to fit; a longer one holds the step's last frame
+  until it finishes. `edl.json` records every decision.
+- **Pointer.** The take records no pointer. It is drawn afterwards from the logged path, with
+  a halo, and a ring spreads from each click.
+- **Zoom.** The view moves in on the element a step acts on and back out once the screen has
+  settled, so the result is seen in full. `render.zoom: 1` turns it off.
+- **Captions** are burned in from the narration's own words and also written to `final.srt`.
+- **Checks.** The finished file is measured against its plan: its length, whether the
+  narration heard in the final mix matches the story, and whether each passage plays when
+  planned. Anything off is listed under `final_check.problems` in `report.json`.
+
 ## Requirements
 
 Python 3.11+, `ffmpeg` on the PATH, and Chromium for Playwright:
@@ -94,6 +109,8 @@ Settings come from `./demogen.yaml`; see [demogen.example.yaml](demogen.example.
 - `src/demogen/recorder/`: screen capture (Chrome screencast into ffmpeg).
 - `src/demogen/story/`: keyframe selection, the vision report, word budgets and the writer.
 - `src/demogen/voice/`: clip trimming, the heard-back check, and the speech engine plugins.
+- `src/demogen/timeline/`: the planner that fits narration to footage, and the edit list.
+- `src/demogen/editor/`: the compositor (zoom, pointer, ripples, captions) and audio mix.
 - `src/demogen/store/`: artifact storage and the content-addressed stage cache.
 
 ## Test
@@ -103,5 +120,5 @@ Settings come from `./demogen.yaml`; see [demogen.example.yaml](demogen.example.
 ```
 
 The browser tests drive a small fixture app in `tests/fixtures/app` with a scripted model, so
-the suite needs Chromium and ffmpeg but no API key. Two tests use the real speech engines and
-are skipped when those are not installed.
+the suite needs Chromium and ffmpeg but no API key. Tests that use the real speech engines
+need the `voice` extra installed.

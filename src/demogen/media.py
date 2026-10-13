@@ -63,3 +63,15 @@ def decode_audio(data: bytes, rate: int) -> np.ndarray:
     except subprocess.CalledProcessError as error:
         raise MediaError(f"ffmpeg could not decode the audio: {error.stderr.decode().strip()[-500:]}") from error
     return np.frombuffer(out.stdout, dtype=np.float32)
+
+
+def extract_wav(video: Path, rate: int = 16000) -> bytes:
+    """A video's sound track as a mono WAV file."""
+    try:
+        out = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", str(rate), "-f", "wav", "pipe:1"],
+            capture_output=True, check=True,
+        )  # fmt: skip
+    except subprocess.CalledProcessError as error:
+        raise MediaError(f"ffmpeg could not read the sound track: {error.stderr.decode().strip()[-500:]}") from error
+    return out.stdout

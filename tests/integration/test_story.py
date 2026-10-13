@@ -6,7 +6,7 @@ import struct
 
 import yaml
 
-from tests.conftest import SCRIPTED, Ref
+from tests.conftest import SCRIPTED, Ref, fake_plan_timeline
 
 STEP_IDS = ["add-task", "finish-task"]
 FACTS = {"steps": [
@@ -52,7 +52,6 @@ def test_keyframes_come_from_the_take_and_include_the_passing_toast(harness, scr
     assert 'On screen: "Write the playbook"; "1 left"; "Task saved"' in scripted_llm.transcript[1]
     assert h.json("r1", "story.json") == STORY
     assert [w["w"] for w in h.json("r1", "words.json")["steps"]["finish-task"]] == ["One", "click,", "done."]
-    assert "write_story" not in h.json("r1", "report.json")["stub_stages"]
 
 
 def test_keyframes_are_scaled_down_for_the_vision_model(harness, scripted_llm, pinned_playbook):
@@ -70,9 +69,7 @@ def test_overrun_found_after_voicing_goes_back_to_the_writer(harness, scripted_l
     flag_once = iter([["finish-task"]])
 
     def plan_timeline(ctx, inputs):
-        from demogen.stages import REGISTRY
-
-        return {**REGISTRY["plan_timeline"].fn(ctx, inputs), "flagged": next(flag_once, [])}
+        return {**fake_plan_timeline(ctx, inputs), "flagged": next(flag_once, [])}
 
     h = harness({"plan_timeline": plan_timeline}, real=("browser", "story"))
     h.start(pinned_playbook, **SCRIPTED)

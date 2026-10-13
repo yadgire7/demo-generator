@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import threading
 
+import numpy as np
+
 from demogen import media
 from demogen.errors import DemogenError
 from demogen.voice.check import Heard
 
 WHISPER_RATE = 16000
+TAIL_SILENCE_S = 0.6
 
 
 class FasterWhisperSTT:
@@ -23,8 +26,11 @@ class FasterWhisperSTT:
 
     def transcribe(self, wav: bytes) -> list[Heard]:
         samples = media.decode_audio(wav, WHISPER_RATE)
+        # Whisper tends to repeat the last word of a clip that ends right after it. A stretch of
+        # silence on the end stops that, and changes no timings.
+        samples = np.concatenate([samples, np.zeros(round(TAIL_SILENCE_S * WHISPER_RATE), dtype=np.float32)])
         with self._lock:
-            segments, _ = self._model.transcribe(samples, word_timestamps=True, language=self.language)
+            segments, _ = self._model.transcribe(samples, word_timestamps=True, language=self.language, condition_on_previous_text=False)
             pieces = [word for segment in segments for word in segment.words]
         words: list[Heard] = []
         for piece in pieces:

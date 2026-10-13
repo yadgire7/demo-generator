@@ -18,7 +18,7 @@ from demogen.graph.runtime import Runtime
 from demogen.llm.base import LLMResult, ToolCall, assistant_message
 from demogen.plugins import register_plugin
 from demogen.stages import REGISTRY
-from demogen.story.budget import speech_seconds, word_budget
+from demogen.story.budget import MAX_OVERRUN, speech_seconds, word_budget
 
 ROOT = Path(__file__).parent
 EXAMPLE = ROOT.parent / "examples" / "playbooks" / "todomvc.yaml"
@@ -96,17 +96,34 @@ def fake_qa_audio(ctx, inputs):
     return {"words": ctx.store.put_json("words.json", words)}
 
 
+# Stand-ins for the edit stages: the overrun check alone, and no rendering.
+def fake_plan_timeline(ctx, inputs):
+    windows = ctx.store.get_json(inputs["windows"])
+    steps, flagged = [], []
+    for step_id, window in sorted(windows.items(), key=lambda item: item[1]["start"]):
+        duration = inputs["clips"][step_id]["duration"]
+        if duration > MAX_OVERRUN * (window["end"] - window["start"]):
+            flagged.append(step_id)
+        steps.append({"step_id": step_id, "video": window, "audio_duration": duration})
+    return {"edl": ctx.store.put_json("edl.json", {"steps": steps}), "flagged": flagged}
+
+
+def fake_render(ctx, inputs):
+    return {"final": {"video": None, "srt": None}}
+
+
 FAKES = {
     "browser": {"setup": fake_setup, "rehearse": fake_rehearse, "record_take": fake_record_take},
     "story": {"extract_keyframes": fake_extract_keyframes, "analyze_frames": fake_analyze_frames, "write_story": fake_write_story},
     "voice": {"synthesize_step": fake_synthesize_step, "qa_audio": fake_qa_audio},
+    "edit": {"plan_timeline": fake_plan_timeline, "render": fake_render},
 }
 
 
 class Harness:
     """A runtime over a temp directory that counts how often each stage really executes.
 
-    Stage groups not named in `real` ("browser", "story", "voice") are replaced by their stand-ins.
+    Stage groups not named in `real` ("browser", "story", "voice", "edit") are replaced by their stand-ins.
     """
 
     def __init__(self, runs_dir: Path, overrides: dict | None = None, *, real: tuple[str, ...] | str = ()):

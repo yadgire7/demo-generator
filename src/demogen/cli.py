@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -31,7 +32,12 @@ def _report(status: RunStatus, runs_dir: Path) -> None:
         typer.echo(f"status  stopped before: {', '.join(status.next) or 'the first stage'}")
         typer.echo(f"next    demogen resume {status.run_id}")
     else:
-        typer.echo(f"status  done: {runs_dir / status.run_id / status.state['report']['path']}")
+        folder = runs_dir / status.run_id
+        final = status.state["final"].get("video")
+        typer.echo(f"status  done: {folder / (final or status.state['report'])['path']}")
+        report = json.loads((folder / status.state["report"]["path"]).read_text())
+        concerns = len(report["audio_warnings"]) + len(report["overrunning_steps"]) + len(report.get("final_check", {}).get("problems", []))
+        typer.echo(f"report  {folder / status.state['report']['path']}" + (f"   ({concerns} thing(s) to look at)" if concerns else ""))
 
 
 def _run(runs_dir: Path, action) -> None:

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from demogen.llm.base import LLMProvider
 from demogen.llm.structured import Problems, complete_checked
 from demogen.playbook.schema import Intent, Playbook
 from demogen.story.budget import Budget
 from demogen.story.schema import Facts, Story
+
+# Marks that have no spoken form and would also show up in the captions.
+_UNSAYABLE = re.compile(r"[\[\]{}<>|\\^~*_#@=+`]")
 
 SYSTEM = """\
 You write the voice-over for a short product demo video. The video is already recorded. Your \
@@ -65,12 +70,17 @@ def _checker(step_ids: list[str], budgets: dict[str, Budget], only: set[str] | N
         if got != step_ids:
             return [f"write exactly one passage per step, with these ids in this order: {step_ids} (got {got})"], []
         fatal = [f"the passage for {step.step_id} is empty" for step in story.steps if not step.text.strip()]
+        unsayable = [
+            f"the passage for {step.step_id} contains characters a voice cannot say: {' '.join(sorted(set(marks)))}"
+            for step in story.steps
+            if (only is None or step.step_id in only) and (marks := _UNSAYABLE.findall(step.text))
+        ]
         long = [
             f"the passage for {step.step_id} has {len(step.text.split())} words; its maximum is {budgets[step.step_id].limit}"
             for step in story.steps
             if (only is None or step.step_id in only) and len(step.text.split()) > budgets[step.step_id].limit
         ]
-        return fatal, long
+        return fatal, unsayable + long
 
     return check
 
