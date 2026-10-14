@@ -1,0 +1,51 @@
+# A shopping demo on the sample store in examples/shop. Serve the store first:
+#
+#   python3 -m http.server 8377 --directory examples/shop
+#
+# Or skip this file and let the playbook be drafted from a prompt:
+#
+#   demogen run --url http://127.0.0.1:8377 --prompt "Show how to shop at Harbour Goods: search
+#     for a t-shirt, choose the colour Navy and the size Large, add it to the cart, then open the cart."
+version: 1
+name: Finding a t-shirt at Harbour Goods
+target:
+  base_url: http://127.0.0.1:8377
+intent:
+  audience: First-time online shoppers
+  tone: Friendly and matter-of-fact
+  key_messages:
+    - Search gets you to what you want quickly
+    - You choose the exact colour and size before anything goes in the cart
+    - The cart lets you check everything before paying
+  cta: Find something you like and add it to your cart.
+steps:
+  - id: search-t-shirt
+    do: Search for "t-shirt"
+    expect: The matching products are listed
+    say_hint: Start by searching for what you want
+    dwell: 2.5s
+  - id: open-crewneck
+    do: Open the Crewneck T-Shirt from the results
+    expect: The product page shows its price, colours and sizes
+    say_hint: Each product has its own page with the options
+    dwell: 2.5s
+  - id: choose-colour
+    do: Choose the colour Navy
+    expect: Navy is the selected colour and the picture shows a navy shirt
+    say_hint: The picture changes to the colour you pick
+    dwell: 2s
+  - id: choose-size
+    do: Choose the size Large
+    expect: L is the selected size
+    say_hint: Then your size
+    dwell: 2s
+  - id: add-to-cart
+    do: Add the shirt to the cart
+    expect: A confirmation names the shirt, its colour and its size
+    say_hint: One click, and nothing is charged yet
+    dwell: 2.5s
+  - id: open-cart
+    do: Open the cart
+    expect: The cart lists the navy shirt in size L with its price
+    say_hint: Check it all before you pay
+    dwell: 3s

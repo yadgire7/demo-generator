@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbour Goods</title>
+<style>
+  :root { --ink: #1c2430; --muted: #5d6b7c; --line: #e3e7ee; --paper: #f7f8fa; --accent: #0b6bcb; --accent-ink: #fff; --ok: #1d7a46; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--paper); }
+  a { color: inherit; text-decoration: none; }
+  header { background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  .bar { max-width: 1120px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: -0.01em; white-space: nowrap; }
+  .brand span { color: var(--accent); }
+  form.search { flex: 1; display: flex; gap: 8px; max-width: 560px; }
+  form.search input { flex: 1; font: inherit; padding: 9px 14px; border: 1px solid #c9d1dc; border-radius: 8px; background: #fff; }
+  form.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  button { font: inherit; cursor: pointer; }
+  .btn { padding: 9px 18px; border-radius: 8px; border: 1px solid #c9d1dc; background: #fff; color: var(--ink); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:disabled { background: #a9b6c6; border-color: #a9b6c6; cursor: not-allowed; }
+  .cart-link { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+  .badge { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+  main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 80px; }
+  h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: block; transition: box-shadow .15s, transform .15s; }
+  .card:hover { box-shadow: 0 6px 20px rgba(28, 36, 48, .10); transform: translateY(-2px); }
+  .card .art { background: #eef1f5; aspect-ratio: 4 / 3; display: grid; place-items: center; }
+  .card .art svg { width: 62%; height: auto; }
+  .card .meta { padding: 14px 16px 16px; }
+  .card .name { font-weight: 600; }
+  .card .price { color: var(--muted); }
+  .dots { display: flex; gap: 6px; margin-top: 8px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .18); }
+  .crumbs { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+  .crumbs a { color: var(--accent); }
+  .product { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: start; }
+  .product .art { background: #eef1f5; border-radius: 16px; aspect-ratio: 1; display: grid; place-items: center; }
+  .product .art svg { width: 68%; height: auto; }
+  .product .price { font-size: 22px; margin: 4px 0 6px; }
+  .product p.blurb { color: var(--muted); margin: 0 0 22px; max-width: 46ch; }
+  .option { margin-bottom: 20px; }
+  .option .label { font-weight: 600; margin-bottom: 8px; }
+  .option .label span { font-weight: 400; color: var(--muted); }
+  .choices { display: flex; flex-wrap: wrap; gap: 10px; }
+  .swatch { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #c9d1dc; padding: 0; }
+  .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--accent); }
+  .size { min-width: 52px; padding: 9px 12px; border-radius: 8px; border: 1px solid #c9d1dc; background: #fff; font-weight: 600; }
+  .size[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .size:disabled { color: #a9b6c6; background: #f1f3f6; text-decoration: line-through; cursor: not-allowed; }
+  .qty { display: inline-flex; align-items: center; border: 1px solid #c9d1dc; border-radius: 8px; background: #fff; overflow: hidden; }
+  .qty button { width: 40px; height: 40px; border: 0; background: #fff; font-size: 18px; }
+  .qty output { width: 40px; text-align: center; font-weight: 600; }
+  .buy { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+  .hint { color: var(--muted); font-size: 14px; margin-top: 10px; min-height: 21px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #fbfcfd; }
+  td.num, th.num { text-align: right; }
+  tr:last-child td { border-bottom: 0; }
+  .line { display: flex; align-items: center; gap: 14px; }
+  .line .thumb { width: 56px; height: 56px; border-radius: 8px; background: #eef1f5; display: grid; place-items: center; flex: none; }
+  .line .thumb svg { width: 70%; }
+  .line small { color: var(--muted); display: block; }
+  .link-btn { border: 0; background: none; color: var(--accent); padding: 0; }
+  .summary { display: flex; justify-content: flex-end; align-items: center; gap: 24px; margin-top: 20px; }
+  .summary .total { font-size: 20px; font-weight: 700; }
+  .empty { background: #fff; border: 1px dashed #c9d1dc; border-radius: 12px; padding: 48px; text-align: center; color: var(--muted); }
+  .toast { position: fixed; right: 24px; top: 84px; background: var(--ok); color: #fff; padding: 12px 18px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); opacity: 0; transform: translateY(-8px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 10; }
+  .toast.show { opacity: 1; transform: none; }
+  footer { max-width: 1120px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="#/" aria-label="Harbour Goods home">Harbour <span>Goods</span></a>
+    <form class="search" role="search" id="search">
+      <input type="search" id="q" placeholder="Search products" aria-label="Search products" autocomplete="off">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <a class="cart-link" href="#/cart" aria-label="Cart">Cart <span class="badge" id="badge" aria-label="items in cart">0</span></a>
+  </div>
+</header>
+<main id="view"></main>
+<footer>Harbour Goods is a sample store for demos. Nothing here is for sale, and nothing is sent anywhere.</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// A sample store: catalogue, search, colour and size options, and a cart. Everything is on this
+// page and in this browser; there is no server and no checkout.
+const COLOURS = {
+  Navy: '#1f3a5f', Black: '#1f2328', 'Heather Grey': '#a9b0b9', Forest: '#2f5d46', Sand: '#d9c7a5',
+  Rust: '#b5532f', White: '#f6f6f3', Steel: '#b9c2cc', Sky: '#7fb2e0',
+};
+const SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
+const PRODUCTS = [
+  { slug: 'crewneck-t-shirt', name: 'Crewneck T-Shirt', price: 24, kind: 'tee', colours: ['Heather Grey', 'Navy', 'Black', 'Forest', 'White'], sizes: SIZES, soldOut: ['Forest/XXL', 'White/S'],
+    blurb: 'A midweight cotton tee with a ribbed crew neck. Pre-washed, so the size you buy is the size it stays.', tags: 'shirt tee top men women cotton' },
+  { slug: 'pullover-hoodie', name: 'Pullover Hoodie', price: 58, kind: 'hoodie', colours: ['Navy', 'Heather Grey', 'Black', 'Rust'], sizes: SIZES, soldOut: ['Rust/S'],
+    blurb: 'Brushed fleece inside, a lined hood and a front pocket big enough for both hands.', tags: 'sweatshirt jumper hooded warm' },
+  { slug: 'long-sleeve-t-shirt', name: 'Long-Sleeve T-Shirt', price: 32, kind: 'longtee', colours: ['Navy', 'White', 'Forest', 'Black'], sizes: SIZES, soldOut: [],
+    blurb: 'The crewneck tee with full-length sleeves and ribbed cuffs, for the months in between.', tags: 'shirt tee top long sleeve cotton' },
+  { slug: 'canvas-tote', name: 'Canvas Tote', price: 28, kind: 'tote', colours: ['Sand', 'Navy', 'Forest'], sizes: [], soldOut: [],
+    blurb: 'Heavy cotton canvas with long handles and a flat base. Carries a week of groceries or a laptop and lunch.', tags: 'bag shopper carry' },
+  { slug: 'wool-beanie', name: 'Wool Beanie', price: 22, kind: 'beanie', colours: ['Rust', 'Navy', 'Heather Grey', 'Forest'], sizes: [], soldOut: [],
+    blurb: 'Soft merino in a double-layer knit. One size, with enough stretch for everyone.', tags: 'hat winter knit cap' },
+  { slug: 'steel-water-bottle', name: 'Steel Water Bottle', price: 30, kind: 'bottle', colours: ['Steel', 'Sky', 'Black'], sizes: [], soldOut: [],
+    blurb: 'Double-walled steel that keeps water cold all day. Fits a cup holder and a bike cage.', tags: 'flask drink insulated' },
+];
+const ART = {
+  tee: c => `<path fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2" stroke-linejoin="round" d="M70 30 40 42 14 78l26 20 14-16v98h92V82l14 16 26-20-26-36-30-12c-4 14-16 20-30 20s-26-6-30-20z"/><path fill="none" stroke="rgba(0,0,0,.22)" stroke-width="2" d="M70 30c4 14 16 20 30 20s26-6 30-20"/>`,
+  longtee: c => `<path fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2" stroke-linejoin="round" d="M70 30 40 42 6 150l24 8 24-66v88h92V92l24 66 24-8-34-108-30-12c-4 14-16 20-30 20s-26-6-30-20z"/><path fill="none" stroke="rgba(0,0,0,.22)" stroke-width="2" d="M70 30c4 14 16 20 30 20s26-6 30-20"/>`,
+  hoodie: c => `<path fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2" stroke-linejoin="round" d="M66 36 38 48 6 150l24 8 22-60v82h96V98l22 60 24-8-32-102-28-12c-2-18-14-28-34-28s-32 10-34 28z"/><path fill="rgba(0,0,0,.12)" d="M72 128h56l8 30H64z"/><path fill="none" stroke="rgba(0,0,0,.25)" stroke-width="2" d="M66 36c6 22 18 30 34 30s28-8 34-30M92 66v26M108 66v26"/>`,
+  tote: c => `<path fill="none" stroke="${c}" stroke-width="9" stroke-linecap="round" d="M68 76V46c0-26 64-26 64 0v30"/><path fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2" stroke-linejoin="round" d="M36 72h128l-10 108H46z"/>`,
+  beanie: c => `<circle cx="100" cy="42" r="14" fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2"/><path fill="${c}" stroke="rgba(0,0,0,.18)" stroke-width="2" d="M40 132c0-48 26-80 60-80s60 32 60 80z"/><rect x="34" y="128" width="132" height="34" rx="8" fill="${c}" stroke="rgba(0,0,0,.22)" stroke-width="2"/><path stroke="rgba(0,0,0,.18)" stroke-width="2" d="M56 130v30M78 130v30M100 130v30M122 130v30M144 130v30"/>`,
+  bottle: c => `<rect x="86" y="18" width="28" height="18" rx="4" fill="#3a4350"/><path fill="${c}" stroke="rgba(0,0,0,.2)" stroke-width="2" d="M82 36h36v14c12 8 16 18 16 30v92c0 8-6 12-12 12H78c-6 0-12-4-12-12V80c0-12 4-22 16-30z"/><path fill="rgba(255,255,255,.35)" d="M76 86h8v80h-8z"/>`,
+};
+const art = (product, colour) => `<svg viewBox="0 0 200 200" role="img" aria-label="${product.name} in ${colour}">${ART[product.kind](COLOURS[colour])}</svg>`;
+const money = n => '$' + n.toFixed(2);
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const cart = JSON.parse(localStorage.getItem('harbour-cart') || '[]');
+const saveCart = () => { localStorage.setItem('harbour-cart', JSON.stringify(cart)); document.getElementById('badge').textContent = cart.reduce((n, line) => n + line.qty, 0); };
+const view = document.getElementById('view');
+let toastTimer;
+function toast(message) {
+  const el = document.getElementById('toast');
+  el.textContent = message; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+function catalogue(query) {
+  const q = (query || '').trim().toLowerCase();
+  const found = PRODUCTS.filter(p => !q || (p.name + ' ' + p.tags + ' ' + p.colours.join(' ')).toLowerCase().includes(q));
+  const heading = q ? `Results for “${escapeHtml(query.trim())}”` : 'Everyday goods, made to last';
+  const sub = q ? `${found.length} ${found.length === 1 ? 'product' : 'products'} found` : 'Six things we use every day. Pick a colour, pick a size, done.';
+  view.innerHTML = `<h1>${heading}</h1><p class="sub">${sub}</p>` + (found.length ? `<div class="grid">${found.map(p => `
+    <a class="card" href="#/product/${p.slug}" aria-label="${p.name}, ${money(p.price)}">
+      <div class="art">${art(p, p.colours[0])}</div>
+      <div class="meta"><div class="name">${p.name}</div><div class="price">${money(p.price)}</div>
+      <div class="dots" aria-label="${p.colours.length} colours">${p.colours.map(c => `<span class="dot" style="background:${COLOURS[c]}" title="${c}"></span>`).join('')}</div></div>
+    </a>`).join('')}</div>` : `<div class="empty">Nothing matches “${escapeHtml(query.trim())}”. <a href="#/" style="color:var(--accent)">See everything</a></div>`);
+}
+
+function product(slug) {
+  const p = PRODUCTS.find(x => x.slug === slug);
+  if (!p) return catalogue('');
+  const state = { colour: p.colours[0], size: null, qty: 1 };
+  const soldOut = size => p.soldOut.includes(`${state.colour}/${size}`);
+  function draw() {
+    if (state.size && soldOut(state.size)) state.size = null;
+    const ready = !p.sizes.length || state.size;
+    view.innerHTML = `<div class="crumbs"><a href="#/">All products</a> / ${p.name}</div>
+    <div class="product">
+      <div class="art">${art(p, state.colour)}</div>
+      <div>
+        <h1>${p.name}</h1>
+        <div class="price">${money(p.price)}</div>
+        <p class="blurb">${p.blurb}</p>
+        <div class="option"><div class="label" id="colour-label">Colour: <span>${state.colour}</span></div>
+          <div class="choices" role="radiogroup" aria-labelledby="colour-label">${p.colours.map(c => `<button class="swatch" role="radio" aria-checked="${c === state.colour}" aria-label="${c}" title="${c}" data-colour="${c}" style="background:${COLOURS[c]}"></button>`).join('')}</div></div>
+        ${p.sizes.length ? `<div class="option"><div class="label" id="size-label">Size: <span>${state.size || 'choose one'}</span></div>
+          <div class="choices" role="radiogroup" aria-labelledby="size-label">${p.sizes.map(s => `<button class="size" role="radio" aria-checked="${s === state.size}" aria-label="${s}${soldOut(s) ? ' (sold out)' : ''}" data-size="${s}" ${soldOut(s) ? 'disabled' : ''}>${s}</button>`).join('')}</div></div>` : ''}
+        <div class="option"><div class="label">Quantity</div>
+          <div class="buy"><div class="qty" role="group" aria-label="Quantity"><button data-step="-1" aria-label="One fewer">−</button><output aria-live="polite">${state.qty}</output><button data-step="1" aria-label="One more">+</button></div>
+          <button class="btn primary" id="add" ${ready ? '' : 'disabled'}>Add to cart</button></div>
+          <div class="hint">${ready ? '' : 'Choose a size to add this to your cart.'}</div></div>
+      </div>
+    </div>`;
+  }
+  view.onclick = event => {
+    const target = event.target.closest('button');
+    if (!target) return;
+    if (target.dataset.colour) state.colour = target.dataset.colour;
+    else if (target.dataset.size) state.size = target.dataset.size;
+    else if (target.dataset.step) state.qty = Math.min(9, Math.max(1, state.qty + Number(target.dataset.step)));
+    else if (target.id === 'add') {
+      const existing = cart.find(l => l.slug === p.slug && l.colour === state.colour && l.size === state.size);
+      existing ? existing.qty += state.qty : cart.push({ slug: p.slug, colour: state.colour, size: state.size, qty: state.qty });
+      saveCart();
+      toast(`Added to cart: ${p.name}, ${[state.colour, state.size].filter(Boolean).join(', ')}`);
+      return;
+    } else return;
+    draw();
+  };
+  draw();
+}
+
+function cartPage() {
+  view.onclick = event => {
+    const target = event.target.closest('button[data-remove]');
+    if (!target) return;
+    cart.splice(Number(target.dataset.remove), 1); saveCart(); cartPage();
+  };
+  if (!cart.length) { view.innerHTML = `<h1>Your cart</h1><p class="sub">Nothing in it yet.</p><div class="empty">Your cart is empty. <a href="#/" style="color:var(--accent)">Browse the shop</a></div>`; return; }
+  const lines = cart.map(l => ({ ...l, product: PRODUCTS.find(p => p.slug === l.slug) }));
+  const total = lines.reduce((sum, l) => sum + l.product.price * l.qty, 0);
+  const count = lines.reduce((n, l) => n + l.qty, 0);
+  view.innerHTML = `<h1>Your cart</h1><p class="sub">${count} ${count === 1 ? 'item' : 'items'}</p>
+  <table><thead><tr><th>Item</th><th class="num">Price</th><th class="num">Quantity</th><th class="num">Total</th><th></th></tr></thead><tbody>${lines.map((l, i) => `
+    <tr><td><div class="line"><div class="thumb">${art(l.product, l.colour)}</div><div><strong>${l.product.name}</strong><small>${[l.colour, l.size && 'Size ' + l.size].filter(Boolean).join(' · ')}</small></div></div></td>
+    <td class="num">${money(l.product.price)}</td><td class="num">${l.qty}</td><td class="num">${money(l.product.price * l.qty)}</td>
+    <td class="num"><button class="link-btn" data-remove="${i}" aria-label="Remove ${l.product.name}">Remove</button></td></tr>`).join('')}</tbody></table>
+  <div class="summary"><span>Subtotal</span><span class="total">${money(total)}</span><button class="btn primary" disabled title="This sample store has no checkout">Checkout</button></div>`;
+}
+
+function route() {
+  view.onclick = null;
+  const [, page, arg] = location.hash.split('/');
+  if (page === 'product') product(arg);
+  else if (page === 'cart') cartPage();
+  else if (page === 'search') { const query = decodeURIComponent(arg || ''); document.getElementById('q').value = query; catalogue(query); }
+  else catalogue('');
+  window.scrollTo(0, 0);
+}
+document.getElementById('search').onsubmit = event => {
+  event.preventDefault();
+  const query = document.getElementById('q').value;
+  location.hash = query.trim() ? '#/search/' + encodeURIComponent(query.trim()) : '#/';
+};
+window.onhashchange = route;
+saveCart();
+route();
+</script>
+</body>
+</html>

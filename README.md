@@ -9,7 +9,8 @@ The design, the research behind it and the milestones are in [docs/design.md](do
 From the command line, a run goes all the way: it rehearses the playbook in a real browser,
 records a clean take, looks at what the take shows, writes and voices narration sized to each
 step, and renders `final.mp4` with a pointer, click ripples, zoom, captions and the narration
-mixed in. You approve the plan before recording and the story before it is voiced.
+mixed in. You approve the plan before recording and the story before it is voiced. A run can also
+start from a prompt, with the playbook drafted for you; see [Starting from a prompt](#starting-from-a-prompt).
 
 The same pipeline also runs as a service: an HTTP API, a Postgres-backed job queue and worker
 pools, with artifacts in S3-compatible storage. See [Running as a service](#running-as-a-service).
@@ -71,6 +72,54 @@ How the video is put together:
   narration heard in the final mix matches the story, and whether each passage plays when
   planned. Anything off is listed under `final_check.problems` in `report.json`.
 
+## Starting from a prompt
+
+You do not have to write the playbook yourself. Describe the demo and one is drafted for you:
+
+```bash
+.venv/bin/demogen run --prompt "Show how to add two todos, complete one and filter to what is left" --url https://demo.playwright.dev/todomvc
+```
+
+The run pauses on the draft (`playbook.yaml` in the run folder). From there you can:
+
+```bash
+.venv/bin/demogen approve <run-id>                                  # use it as it is
+.venv/bin/demogen approve <run-id> --feedback "Drop the last step"  # have it redrafted, as often as you like
+.venv/bin/demogen approve <run-id> --edit my-playbook.yaml          # replace it with your own file
+```
+
+Good to know:
+
+- **The drafter has not seen the site.** It writes steps by intent ("Search for…", "Choose the
+  colour Navy") from your prompt alone. Whether the site can do them is found out at
+  rehearsal, which stops with the reason if a step cannot be done.
+- **`--url` is optional** when the prompt names a well-known site; check `base_url` in the
+  draft either way.
+- **Sign-in is never drafted.** Add a `setup` block by editing the playbook if the demo needs one.
+- **Feedback in words works only at this pause.** The plan and the story are changed by
+  sending an edited file.
+
+## A sample store to try it on
+
+`examples/shop` is a small self-contained store, Harbour Goods, with search, colour and size
+options and a cart. It needs no network and never changes between rehearsal and recording,
+so it is a dependable place to try a shopping demo:
+
+```bash
+python3 -m http.server 8377 --directory examples/shop
+```
+
+```bash
+.venv/bin/demogen run examples/playbooks/shop.yaml
+```
+
+Or have the playbook drafted: `demogen run --url http://127.0.0.1:8377 --prompt "Show how to
+search for a t-shirt, choose Navy and size Large, add it to the cart and open the cart"`.
+
+Public sites built for automation practice also work; the Toolshop at
+practicesoftwaretesting.com has been run end to end. Sites that guard against automated
+browsing, Amazon among them, are not workable targets.
+
 ## Requirements
 
 Python 3.11+, `ffmpeg` on the PATH, and Chromium for Playwright:
@@ -128,9 +177,10 @@ A run over HTTP, with `Authorization: Bearer $DEMOGEN_API_TOKEN` on every reques
 
 | Request | What it does |
 |---|---|
-| `POST /runs` (form: `playbook`, optional `intent`, `config`, `run_id`) | Start a run |
+| `POST /runs` (form: `playbook` or `prompt`, optional `url`, `intent`, `config`, `run_id`) | Start a run from a playbook, or from a prompt to have one drafted |
+| `POST /runs/{id}/feedback` (JSON: `feedback`) | Send a drafted playbook back to be revised |
 | `GET /runs`, `GET /runs/{id}` | List runs; one run's phase, what it waits on, and its artifacts |
-| `POST /runs/{id}/approve` (optional body: the edited plan or story) | Approve the plan or story |
+| `POST /runs/{id}/approve` (optional body: the edited playbook, plan or story) | Approve the playbook, plan or story |
 | `POST /runs/{id}/resume` | Continue a run that failed |
 | `POST /runs/{id}/rerun` (JSON: `from_stage`, optional `intent`) | Run again from a stage |
 | `GET /runs/{id}/artifacts/{path}` | Download an artifact, such as `final.mp4` |

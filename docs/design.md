@@ -454,5 +454,50 @@ Recorded as each milestone lands.
   Caching is now requested only for tool loops.
 - **Not built:** metrics, log correlation, and any sampling policy (everything is recorded).
 
+**Drafting a playbook from a prompt (added after M5)**
+- **Two new graph nodes in front of `load_validate`**: `draft_playbook`, and an approval pause
+  that also accepts feedback in words and loops back to redraft. A run given a playbook file
+  skips both.
+- **The drafter works from the prompt alone**, by the user's choice: it has not seen the site.
+  Steps are intent-level, so this is workable; a step the site cannot do surfaces at rehearsal.
+- **The model fills a smaller schema than the playbook's own** (no pinned actions, data
+  blocks or setup), which is converted and then checked against the real playbook rules; a
+  draft that breaks them goes back to the model with the reasons.
+- **Feedback in words is taken only for the drafted playbook**, by the user's choice. The plan
+  and story pauses still take an edited file.
+- **It uses the `planner` model role**; no new role to configure.
+- **An author's edited playbook is stored as they wrote it**, comments included.
+- **Verified with the real model:** a draft and a feedback-driven redraft for an Amazon
+  shopping prompt (drafting only; nothing was run against Amazon), and a TodoMVC prompt
+  carried through to a finished 21-second video.
+
+**Real-site runs (2026-10-13): what broke, and what was done**
+- **Amazon is not a workable target.** After a few automated sessions it served its "Click
+  the button below to continue shopping" check in place of the home page. The tool does not
+  click through such checks and must not grow ways around them.
+- **Fixed: typed text in the take could differ from rehearsal.** Rehearsal replaced a field's
+  value; the take cleared the field and then typed. On the Toolshop the quantity field
+  refills itself with 1 when emptied, so typing 2 gave 12, the cart total was wrong, and the
+  step's expected text never appeared. The take now selects the existing text and types over it.
+- **Fixed: a missed expectation said only "Timeout".** It now names the text that did not
+  appear and says that rehearsal had shown it.
+- **Open: stray actions in rehearsed plans.** On the Toolshop the model added three hovers and
+  a direct jump to the cart page, all recorded and due to be replayed. The plan approval
+  caught them. The rehearsal agent needs a way to look around without it going in the plan.
+- **Open: repair attempts are wasted on failures re-rehearsal cannot fix.** The typing bug
+  cost two repairs and three takes before the run gave up.
+- **Open: locators anchored on per-load random ids**, seen in an Amazon plan for a link with
+  no accessible name; not yet reproduced in a take.
+- **Open: nothing is saved when a step fails** (no screenshot), and command-line runs do not
+  keep the error that stopped them.
+- **Open: a drafted playbook that fails rehearsal cannot take feedback** with the reason.
+- **Open: narration starts when its step starts**, so a passage can describe a result a
+  second or two before the click that produces it.
+- **Measured cost** at Opus 5.5 list prices: about $0.65 for the Toolshop run (including the
+  failed take's two repairs; rehearsal was $0.47 of it) and about $0.46 for the sample store
+  run (including one repeated rehearsal).
+- **Added: `examples/shop`**, a self-contained sample store with search, colour and size
+  options and a cart, and `examples/playbooks/shop.yaml`.
+
 ## Sources
 [aidemo](https://github.com/tandryukha/aidemo) · [ai-demo-generator-oss](https://github.com/grodriguez1983/ai-demo-generator-oss) · [Playwright 1.59 release](https://github.com/microsoft/playwright/releases/tag/v1.59.0) · [Playwright recordVideo bitrate issue #31424](https://github.com/microsoft/playwright/issues/31424) · [Puppeteer ScreenRecorder](https://app.unpkg.com/puppeteer-core@25.4.0/files/src/node/ScreenRecorder.ts) · [Playwright MCP vs CLI](https://morphllm.com/playwright-mcp) · [Stagehand/browser-use comparison](https://www.pkgpulse.com/guides/stagehand-vs-playwright-ai-vs-browser-use-ai-web-2026) · [Xvfb + ffmpeg recording](https://kroket.io/blog/recording-headless-firefox.html) · [LangGraph HITL](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) · [LangGraph vs Temporal](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) · [LiteLLM vs LangChain](https://toolhalla.ai/compare/langchain-vs-litellm) · [Open TTS 2026](https://pinggy.io/blog/best_open_source_self_hosted_text_to_speech_models/) · [Open-weight TTS licenses](https://builderai.tools/blog/open-weight-text-to-speech-models-2026) · [WhisperX](https://arxiv.org/abs/2303.00747v1) · [Parakeet vs Whisper](https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron) · [Frame sampling for VLMs](https://arxiv.org/pdf/2509.14769) · [Remotion vs ffmpeg](https://thegtmdirectory.com/compare/ffmpeg-vs-remotion) · [rrweb limits (Browserbase)](https://browserbase.com/blog/session-recordings) · [Durable engines compared (Upstash)](https://upstash.com/blog/durable-workflow-engines-compared-every-major-option-in-2026) · [Restate/DBOS/Hatchet beyond Temporal](https://cloudrps.com/blog/durable-execution-restate-dbos-hatchet-beyond-temporal/) · [DBOS workflows](https://docs.dbos.dev/python/tutorials/workflow-tutorial) · [DBOS pricing](https://www.dbos.dev/dbos-pricing) · [Temporal Cloud pricing](https://docs.temporal.io/cloud/pricing) · [Temporal self-host cost](https://automationatlas.io/guides/temporal-cloud-vs-self-hosted-2026/) · [Hatchet v1](https://hn.svelte.dev/item/43572733) · [Prefect pause/resume](https://docs.prefect.io/v3/develop/pause-resume) · [Burr persistence](https://burr.apache.org/concepts/state-persistence/) · [pydantic-graph persistence](https://ai.pydantic.dev/api/pydantic_graph/persistence) · [LlamaIndex durable workflows](https://developers.llamaindex.ai/python/workflows/durable_workflows/) · [LangGraph checkpointing postmortem](https://pub.towardsai.net/langgraph-checkpointing-is-not-free-a-production-postmortem-398bc86861f4) · [LangGraph Platform pricing](https://www.langchain.com/langgraph-platform-pricing)
