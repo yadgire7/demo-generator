@@ -66,6 +66,7 @@ def test_structured_output_gets_one_corrective_retry(completions):
 def test_llm_for_resolves_the_configured_role():
     config = Config(models={"writer": ModelConfig(model="p/m", params={"temperature": 0.2})})
     provider = llm_for(config, "writer")
-    assert isinstance(provider, LiteLLMProvider) and provider.model == "p/m" and provider.params == {"temperature": 0.2}
+    adapter = provider.inner  # the adapter itself sits inside a wrapper that traces its calls
+    assert isinstance(adapter, LiteLLMProvider) and adapter.model == "p/m" and adapter.params == {"temperature": 0.2}
     with pytest.raises(LLMError, match="vision"):
         llm_for(config, "vision")

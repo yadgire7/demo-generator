@@ -13,7 +13,8 @@ mixed in. You approve the plan before recording and the story before it is voice
 
 The same pipeline also runs as a service: an HTTP API, a Postgres-backed job queue and worker
 pools, with artifacts in S3-compatible storage. See [Running as a service](#running-as-a-service).
-Not built yet: tracing, and a tested container setup (the files in `deploy/` are untested).
+Runs can be traced with OpenTelemetry; see [Tracing](#tracing). Not built yet: metrics, and
+a tested container setup (the files in `deploy/` are untested).
 
 How recording works:
 
@@ -151,11 +152,38 @@ How it holds together:
 `deploy/Dockerfile` and `deploy/compose.yaml` describe this layout for Docker. They were
 written without Docker to hand and have not been built or run.
 
+## Tracing
+
+Install the extra (`pip install -e ".[otel]"`) and set the standard OpenTelemetry variables
+in every process, command line or service:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318   # OTLP over HTTP
+# or, to see what is recorded without a collector:
+export OTEL_TRACES_EXPORTER=console
+```
+
+With neither set, nothing is recorded and nothing is sent. What a trace holds:
+
+- **One trace each time a run moves forward** (start, approve, resume, rerun), tagged with
+  the run's id. In the service it begins at the API request and follows the run through the
+  queue into each worker.
+- **A span per stage**, with whether its result came from cache. In the service, a second
+  span covers the wait for a worker.
+- **A span per model call**: the model, the role it was used for, and tokens in and out,
+  including how many were read from the prompt cache. Prompts and replies are never recorded.
+- **A span per speech call**: characters voiced, words heard back.
+
+Processes report as `demogen-cli`, `demogen-api` and `demogen-worker`; `OTEL_SERVICE_NAME`
+overrides that. Every request is traced, so a client that polls run status often will
+produce a steady stream of small API traces; sample at the collector if that matters.
+
 ## Layout
 
 - `src/demogen/stages/`: the pipeline's stages, as plain functions over artifact references.
 - `src/demogen/exec/`: where stages run (in this process, or queued to a worker pool).
 - `src/demogen/service/`: the HTTP API, the worker tasks and the list of runs.
+- `src/demogen/telemetry.py`: tracing; a no-op until the environment turns it on.
 - `src/demogen/graph/`: the LangGraph control plane. Nothing else imports LangGraph.
 - `src/demogen/llm/`: the provider-neutral LLM interface, the tool loop, and the Anthropic and
   LiteLLM adapters.

@@ -91,6 +91,7 @@ def test_anthropic_request_shape(claude):
     assert request["output_config"] == {"effort": "medium"}
     assert request["betas"] == [FALLBACK_BETA] and request["fallbacks"] == "default"
     assert "thinking" not in request and "tool_choice" not in request and "temperature" not in request
+    assert request["cache_control"] == {"type": "ephemeral"}  # a tool loop resends its conversation each turn
 
     assert [(c.id, c.name, c.arguments) for c in result.tool_calls] == [("tu1", "click", {"ref": "e5"})]
     assert (result.usage.input_tokens, result.usage.output_tokens) == (11, 7)
@@ -142,3 +143,14 @@ def test_anthropic_refusal_and_truncation_are_errors(claude):
     queue.append(_response(_block("text", text="partial"), stop_reason="max_tokens"))
     with pytest.raises(LLMError, match="cut off"):
         llm.complete([{"role": "user", "content": "?"}])
+
+
+def test_anthropic_counts_cached_input_and_caches_only_tool_loops(claude):
+    llm, sent, queue = claude
+    cached = _response(_block("text", text="ok"))
+    cached.usage = SimpleNamespace(input_tokens=4, output_tokens=47, cache_read_input_tokens=2000, cache_creation_input_tokens=521)
+    queue.append(cached)
+    usage = llm.complete([{"role": "user", "content": "one question, asked once"}]).usage
+    # The API's `input_tokens` leaves out what was cached; the total is what the model actually read.
+    assert (usage.input_tokens, usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens) == (2525, 2000, 521, 47)
+    assert "cache_control" not in sent[0]  # nothing would ever read a one-off request's cache entry

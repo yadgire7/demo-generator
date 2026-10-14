@@ -13,6 +13,7 @@ dependencies = [
   "anthropic>=1.13",
   "litellm>=1.100",
   "numpy>=1.26",
+  "opentelemetry-api>=1.27",
   "pillow>=10.1",
   "playwright>=1.59",
   "python-dotenv>=1",
@@ -22,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = ["pytest>=8", "httpx>=0.27", "opentelemetry-sdk>=1.27"]
 # Running as a service: Postgres checkpoints and job queue, S3 artifacts, the HTTP API.
 service = [
   "procrastinate>=3.5",
@@ -33,6 +34,8 @@ service = [
   "uvicorn>=0.30",
   "python-multipart>=0.0.9",
 ]
+# Tracing: the SDK and an OTLP exporter. Without it, tracing calls are no-ops.
+otel = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp-proto-http>=1.27"]
 # The default speech engines. Other engines are plugins and need neither.
 voice = ["kokoro>=0.9.4", "faster-whisper>=1.2"]
 

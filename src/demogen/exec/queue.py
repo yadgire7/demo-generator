@@ -4,6 +4,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from demogen import telemetry
 from demogen.exec.base import result_key
 from demogen.stages import REGISTRY, StageContext, StageError, StageSpec
 from demogen.store.cache import StageCache
@@ -41,18 +42,21 @@ class QueueExecutor:
         if cached is not None:
             return cached
 
-        job_id = self._defer(spec.pool, run_id=ctx.run_id, stage_name=stage_name, inputs=inputs, key=key)
-        while True:
-            status = self._status(job_id)
-            if status == "succeeded":
-                result = cache.get(spec.name, key)
-                if result is None:
-                    raise StageError(f"{stage_name} finished on a worker but left no result")
-                return result
-            if status in ("failed", "cancelled", "aborted"):
-                try:
-                    reason = ctx.store.get_json(error_path(spec.name, key))["error"]
-                except FileNotFoundError:
-                    reason = f"{stage_name} failed on a {spec.pool} worker; see that worker's log"
-                raise StageError(reason)
-            time.sleep(POLL_S)
+        attributes = dict(demogen__run_id=ctx.run_id, demogen__stage=spec.name, demogen__pool=spec.pool)
+        with telemetry.span(f"queue {spec.name}", telemetry.PRODUCER, **attributes) as span:
+            job_id = self._defer(spec.pool, run_id=ctx.run_id, stage_name=stage_name, inputs=inputs, key=key, trace=telemetry.carrier())
+            span.set_attribute("demogen.job_id", job_id)
+            while True:
+                status = self._status(job_id)
+                if status == "succeeded":
+                    result = cache.get(spec.name, key)
+                    if result is None:
+                        raise StageError(f"{stage_name} finished on a worker but left no result")
+                    return result
+                if status in ("failed", "cancelled", "aborted"):
+                    try:
+                        reason = ctx.store.get_json(error_path(spec.name, key))["error"]
+                    except FileNotFoundError:
+                        reason = f"{stage_name} failed on a {spec.pool} worker; see that worker's log"
+                    raise StageError(reason)
+                time.sleep(POLL_S)

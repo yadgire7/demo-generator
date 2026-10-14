@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from demogen import telemetry
 from demogen.config import Config, Role
 from demogen.errors import DemogenError
 from demogen.plugins import load_plugin
@@ -39,8 +40,10 @@ class ToolCall:
 
 @dataclass
 class Usage:
-    input_tokens: int = 0
+    input_tokens: int = 0  # everything the model read, whether or not it came from the prompt cache
     output_tokens: int = 0
+    cache_read_tokens: int = 0  # the part of the input served from the prompt cache (billed far lower)
+    cache_write_tokens: int = 0  # the part written to the cache for later calls (billed a little higher)
 
 
 @dataclass
@@ -98,4 +101,35 @@ def llm_for(config: Config, role: Role) -> LLMProvider:
     if role not in config.models:
         raise LLMError(f"no model configured for the {role!r} role (set models.{role} in demogen.yaml)")
     spec = config.models[role]
-    return load_plugin("llm", spec.provider)(model=spec.model, **spec.params)
+    return TracedLLM(load_plugin("llm", spec.provider)(model=spec.model, **spec.params), spec.provider, spec.model, role)
+
+
+class TracedLLM:
+    """Records each model call as a span: which model, for which role, and the tokens used.
+
+    Prompts and replies are never recorded: they hold page content and may hold customer data.
+    """
+
+    def __init__(self, inner: LLMProvider, provider: str, model: str, role: str):
+        self.inner = inner
+        self._attributes = dict(gen_ai__operation__name="chat", gen_ai__provider__name=provider, gen_ai__request__model=model, demogen__llm__role=role)
+        self._name = f"chat {model}"
+
+    def complete(
+        self,
+        messages: list[Message],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        response_schema: type[BaseModel] | None = None,
+    ) -> LLMResult:
+        with telemetry.span(self._name, telemetry.CLIENT, **self._attributes) as span:
+            result = self.inner.complete(messages, tools=tools, response_schema=response_schema)
+            telemetry.set_attributes(
+                span,
+                gen_ai__usage__input_tokens=result.usage.input_tokens,
+                gen_ai__usage__output_tokens=result.usage.output_tokens,
+                gen_ai__usage__cache_read__input_tokens=result.usage.cache_read_tokens or None,
+                gen_ai__usage__cache_creation__input_tokens=result.usage.cache_write_tokens or None,
+                demogen__llm__tool_calls=len(result.tool_calls),
+            )
+            return result

@@ -15,6 +15,7 @@ from typing import Any
 
 import procrastinate
 
+from demogen import telemetry
 from demogen.errors import DemogenError
 from demogen.exec.local import LocalExecutor
 from demogen.exec.queue import STAGE_TASK, QueueExecutor, error_path
@@ -84,7 +85,8 @@ class Service:
     def submit(self, run_id: str, step: Step) -> None:
         """Queue a step for a control worker. Steps for one run are taken one at a time."""
         self.runs.set_error(run_id, None)
-        self.queue.configure_task(DRIVE_TASK, queue=CONTROL_QUEUE, lock=f"run:{run_id}").defer(run_id=run_id, step=step)
+        with telemetry.span("run.submit", telemetry.PRODUCER, demogen__run_id=run_id, demogen__step=step["kind"]):
+            self.queue.configure_task(DRIVE_TASK, queue=CONTROL_QUEUE, lock=f"run:{run_id}").defer(run_id=run_id, step=step, trace=telemetry.carrier())
 
     def busy(self, run_id: str) -> bool:
         """Whether a step for this run is queued or under way."""
@@ -115,23 +117,25 @@ class Service:
 
     def _register_tasks(self) -> None:
         @self.queue.task(name=STAGE_TASK)
-        def run_stage(run_id: str, stage_name: str, inputs: dict[str, Any], key: str) -> None:
+        def run_stage(run_id: str, stage_name: str, inputs: dict[str, Any], key: str, trace: dict[str, str] | None = None) -> None:
             ctx = self.runtime.context(run_id)
-            try:
-                self._stage_runner.run(stage_name, ctx, inputs)
-            except DemogenError as error:
-                # The reason travels back to the run through its store; the job itself just fails.
-                ctx.store.put_json(error_path(stage_name, key), {"error": str(error)})
-                raise
+            with telemetry.continued(trace):
+                try:
+                    self._stage_runner.run(stage_name, ctx, inputs)
+                except DemogenError as error:
+                    # The reason travels back to the run through its store; the job itself just fails.
+                    ctx.store.put_json(error_path(stage_name, key), {"error": str(error)})
+                    raise
 
         @self.queue.task(name=DRIVE_TASK)
-        def drive_run(run_id: str, step: Step) -> None:
-            try:
-                self.runtime.advance(run_id, step)
-            except DemogenError as error:
-                log.warning("run %s stopped: %s", run_id, error)
-                self.runs.set_error(run_id, str(error))
-                return
+        def drive_run(run_id: str, step: Step, trace: dict[str, str] | None = None) -> None:
+            with telemetry.continued(trace):
+                try:
+                    self.runtime.advance(run_id, step)
+                except DemogenError as error:
+                    log.warning("run %s stopped: %s", run_id, error)
+                    self.runs.set_error(run_id, str(error))
+                    return
             self.runs.set_finished(run_id, self.runtime.status(run_id).phase == "done")
 
         @self.queue.periodic(cron="* * * * *")

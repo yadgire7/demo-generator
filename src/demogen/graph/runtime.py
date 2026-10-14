@@ -16,6 +16,7 @@ from typing import Any, Literal
 import yaml
 from langgraph.types import Command
 
+from demogen import telemetry
 from demogen.config import Config
 from demogen.driver.lockfile import Plan
 from demogen.errors import DemogenError
@@ -152,16 +153,18 @@ class Runtime:
 
     def advance(self, run_id: str, step: Step) -> None:
         kind = step["kind"]
-        if kind == "start":
-            self._invoke(run_id, step["state"])
-        elif kind == "approve":
-            self._invoke(run_id, Command(resume=step["decision"]))
-        elif kind == "resume":
-            self._invoke(run_id, None)
-        elif kind == "rerun":
-            self._rerun(run_id, step["from_node"], step.get("intent"))
-        else:
-            raise RunError(f"unknown step: {kind}")
+        with telemetry.span("run.advance", demogen__run_id=run_id, demogen__step=kind, demogen__from_stage=step.get("from_node")) as span:
+            if kind == "start":
+                self._invoke(run_id, step["state"])
+            elif kind == "approve":
+                self._invoke(run_id, Command(resume=step["decision"]))
+            elif kind == "resume":
+                self._invoke(run_id, None)
+            elif kind == "rerun":
+                self._rerun(run_id, step["from_node"], step.get("intent"))
+            else:
+                raise RunError(f"unknown step: {kind}")
+            span.set_attribute("demogen.phase", self.status(run_id).phase)
 
     def _invoke(self, run_id: str, graph_input: Any, config: dict[str, Any] | None = None) -> None:
         try:

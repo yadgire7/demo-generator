@@ -40,7 +40,6 @@ class AnthropicProvider:
             "max_tokens": self.max_tokens,
             "messages": turns,
             "output_config": {"effort": self.effort},
-            "cache_control": {"type": "ephemeral"},
             "betas": [FALLBACK_BETA],
             "fallbacks": "default",
             **self.params,
@@ -49,6 +48,9 @@ class AnthropicProvider:
             request["system"] = system
         if tools:
             request["tools"] = [_to_anthropic_tool(tool) for tool in tools]
+            # A tool loop sends the same growing conversation every turn, so caching it pays for
+            # itself from the second turn. A one-off request would only pay the cache-write premium.
+            request["cache_control"] = {"type": "ephemeral"}
         if response_schema is not None:
             request["output_config"]["format"] = {"type": "json_schema", "schema": _strict(response_schema.model_json_schema())}
 
@@ -79,9 +81,21 @@ class AnthropicProvider:
             text=text,
             tool_calls=tool_calls,
             parsed=response_schema.model_validate_json(text) if response_schema is not None and text else None,
-            usage=Usage(input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens),
+            usage=_usage(response.usage),
             message=assistant_message(text, tool_calls, native=response.content),
         )
+
+
+def _usage(usage: Any) -> Usage:
+    # The API reports cached input apart from `input_tokens`, which counts only what was not cached.
+    read = getattr(usage, "cache_read_input_tokens", None) or 0
+    written = getattr(usage, "cache_creation_input_tokens", None) or 0
+    return Usage(
+        input_tokens=usage.input_tokens + read + written,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=read,
+        cache_write_tokens=written,
+    )
 
 
 def _to_anthropic(messages: list[Message]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

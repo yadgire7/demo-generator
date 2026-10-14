@@ -430,7 +430,29 @@ Recorded as each milestone lands.
 - **Verified** against Postgres 17 and MinIO installed locally, including a real run over
   HTTP with three worker processes and real models (about a minute and a half, end to end).
 - **Not verified:** the Docker files, AWS S3 itself, more than one machine, and load.
-- **Not built:** tracing (Langfuse or OpenTelemetry), per-user access, a dashboard.
+- **Not built:** per-user access, a dashboard.
+
+**Tracing (OpenTelemetry)**
+- **Chosen over Langfuse** by the user. Spans go through one small module, `telemetry.py`;
+  only the API package is a core dependency, and the SDK and exporter are an optional extra.
+- **Turned on by the standard environment variables only.** No demogen-specific switch.
+- **One trace per advance of a run, not per run.** A run pauses for a person, sometimes for
+  days; a trace that long is no use. Every span carries the run's id to tie them together.
+- **Trace context rides in the job's arguments**, so a trace continues from the API, through
+  the control worker, into the pool that runs each stage. It also survives LangGraph's own
+  worker threads, which copy the context.
+- **Model spans follow the GenAI conventions** and record token counts but never content.
+- **Speech and model calls are traced by wrapping the provider** where it is looked up, so
+  every adapter is covered without touching any.
+- **FastAPI emits its own request spans** once tracing is on; nothing was added for that.
+- **Verified** with a stand-in collector receiving real OTLP exports: a command-line run
+  (34 spans, one trace) and a service run (55 spans in one trace, across the API and three
+  worker processes).
+- **Found through the first traces, and fixed:** the Anthropic adapter reported only uncached
+  input tokens (2 to 4 a call, where the true figure was thousands); and it asked for prompt
+  caching on one-off requests, which pay the cache-write premium and are never read back.
+  Caching is now requested only for tool loops.
+- **Not built:** metrics, log correlation, and any sampling policy (everything is recorded).
 
 ## Sources
 [aidemo](https://github.com/tandryukha/aidemo) · [ai-demo-generator-oss](https://github.com/grodriguez1983/ai-demo-generator-oss) · [Playwright 1.59 release](https://github.com/microsoft/playwright/releases/tag/v1.59.0) · [Playwright recordVideo bitrate issue #31424](https://github.com/microsoft/playwright/issues/31424) · [Puppeteer ScreenRecorder](https://app.unpkg.com/puppeteer-core@25.4.0/files/src/node/ScreenRecorder.ts) · [Playwright MCP vs CLI](https://morphllm.com/playwright-mcp) · [Stagehand/browser-use comparison](https://www.pkgpulse.com/guides/stagehand-vs-playwright-ai-vs-browser-use-ai-web-2026) · [Xvfb + ffmpeg recording](https://kroket.io/blog/recording-headless-firefox.html) · [LangGraph HITL](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) · [LangGraph vs Temporal](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) · [LiteLLM vs LangChain](https://toolhalla.ai/compare/langchain-vs-litellm) · [Open TTS 2026](https://pinggy.io/blog/best_open_source_self_hosted_text_to_speech_models/) · [Open-weight TTS licenses](https://builderai.tools/blog/open-weight-text-to-speech-models-2026) · [WhisperX](https://arxiv.org/abs/2303.00747v1) · [Parakeet vs Whisper](https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron) · [Frame sampling for VLMs](https://arxiv.org/pdf/2509.14769) · [Remotion vs ffmpeg](https://thegtmdirectory.com/compare/ffmpeg-vs-remotion) · [rrweb limits (Browserbase)](https://browserbase.com/blog/session-recordings) · [Durable engines compared (Upstash)](https://upstash.com/blog/durable-workflow-engines-compared-every-major-option-in-2026) · [Restate/DBOS/Hatchet beyond Temporal](https://cloudrps.com/blog/durable-execution-restate-dbos-hatchet-beyond-temporal/) · [DBOS workflows](https://docs.dbos.dev/python/tutorials/workflow-tutorial) · [DBOS pricing](https://www.dbos.dev/dbos-pricing) · [Temporal Cloud pricing](https://docs.temporal.io/cloud/pricing) · [Temporal self-host cost](https://automationatlas.io/guides/temporal-cloud-vs-self-hosted-2026/) · [Hatchet v1](https://hn.svelte.dev/item/43572733) · [Prefect pause/resume](https://docs.prefect.io/v3/develop/pause-resume) · [Burr persistence](https://burr.apache.org/concepts/state-persistence/) · [pydantic-graph persistence](https://ai.pydantic.dev/api/pydantic_graph/persistence) · [LlamaIndex durable workflows](https://developers.llamaindex.ai/python/workflows/durable_workflows/) · [LangGraph checkpointing postmortem](https://pub.towardsai.net/langgraph-checkpointing-is-not-free-a-production-postmortem-398bc86861f4) · [LangGraph Platform pricing](https://www.langchain.com/langgraph-platform-pricing)

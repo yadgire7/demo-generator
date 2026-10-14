@@ -383,3 +383,27 @@ def wait_for(condition, *, timeout: float = 20.0, what: str = "the condition"):
             return value
         time.sleep(0.05)
     raise AssertionError(f"timed out after {timeout}s waiting for {what}")
+
+
+# --- Tracing: spans are collected in memory, so tests can look at what was recorded.
+
+
+@pytest.fixture(scope="session")
+def _span_exporter():
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)  # once per process; every test after this is traced
+    return exporter
+
+
+@pytest.fixture
+def spans(_span_exporter):
+    """A function returning the spans finished since the test began."""
+    _span_exporter.clear()
+    return _span_exporter.get_finished_spans

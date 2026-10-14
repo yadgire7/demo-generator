@@ -93,7 +93,8 @@ def test_take_is_recorded_with_a_matching_event_log(harness, pinned_playbook):
     assert kinds.count("cursor") > 30
 
     windows = h.json("r1", "windows.json")
-    assert windows["add-task"]["end"] == windows["finish-task"]["start"]
+    # One step ends as the next begins (two clock readings, so they may differ by a millisecond).
+    assert windows["add-task"]["end"] == pytest.approx(windows["finish-task"]["start"], abs=0.002)
 
 
 def test_scale_factor_sets_the_video_resolution(harness, pinned_playbook):

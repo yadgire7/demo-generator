@@ -9,6 +9,7 @@ import typer
 import yaml
 from pydantic import ValidationError
 
+from demogen import telemetry
 from demogen.config import load_config
 from demogen.env import load_env
 from demogen.errors import DemogenError
@@ -43,6 +44,7 @@ def _report(status: RunStatus, runs_dir: Path) -> None:
 
 def _run(runs_dir: Path, action) -> None:
     load_env()
+    _tracing("cli")
     runtime = Runtime.local(runs_dir)
     try:
         _report(action(runtime), runs_dir)
@@ -102,9 +104,18 @@ def rerun(
     _run(runs_dir, lambda rt: rt.rerun(run_id, from_node, intent))
 
 
-def _service():
+def _tracing(role: str) -> None:
+    try:
+        telemetry.configure(role)
+    except DemogenError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(1)
+
+
+def _service(role: str):
     """The service handle, built from the environment. Needs the `service` extra installed."""
     load_env()
+    _tracing(role)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
         from demogen.service.core import Service
@@ -122,7 +133,7 @@ def _service():
 @app.command()
 def migrate() -> None:
     """Service: create the tables the service needs in Postgres. Safe to run again."""
-    _service().migrate()
+    _service("migrate").migrate()
     typer.echo("database ready")
 
 
@@ -141,7 +152,7 @@ def worker(
     if "control" in pool and len(pool) > 1 and concurrency < 2:
         typer.echo("error: a worker that both drives runs and runs their stages needs --concurrency 2 or more", err=True)
         raise typer.Exit(1)
-    _service().run_worker(pool, concurrency)
+    _service("worker").run_worker(pool, concurrency)
 
 
 @app.command()
@@ -151,7 +162,7 @@ def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
 
     from demogen.service.api import create_api
 
-    service = _service()
+    service = _service("api")
     try:
         with service.opened():
             uvicorn.run(create_api(service), host=host, port=port)

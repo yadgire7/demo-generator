@@ -288,3 +288,21 @@ def test_old_finished_runs_lose_their_checkpoints_but_keep_their_artifacts(deplo
     assert api.runtime.context("r1").store.exists("report.json")
     with psycopg.connect(settings.database_url) as connection:
         assert connection.execute("SELECT count(*) FROM checkpoints WHERE thread_id = 'r1'").fetchone()[0] == 0
+
+
+def test_a_trace_follows_a_run_across_the_queue(deployment, playbook, spans):
+    api, _ = deployment()
+    _start(api, playbook, auto_approve=True)
+    _phase(api, "r1", "done")
+
+    by_name = {span.name: span for span in spans()}
+    submit, advance = by_name["run.submit"], by_name["run.advance"]
+    assert submit.parent is None and submit.attributes["demogen.step"] == "start"
+    assert advance.parent.span_id == submit.context.span_id  # queued by the API, driven by a control worker
+
+    queued, ran = by_name["queue record_take"], by_name["stage record_take"]
+    assert queued.parent.span_id == advance.context.span_id and queued.attributes["demogen.pool"] == "browser"
+    assert isinstance(queued.attributes["demogen.job_id"], int)
+    assert ran.parent.span_id == queued.context.span_id  # on a browser worker, under the wait that queued it
+    assert {span.context.trace_id for span in spans()} == {submit.context.trace_id}
+    assert sum(span.name == "stage synthesize_step" for span in spans()) == 4

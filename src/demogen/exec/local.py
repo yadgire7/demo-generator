@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from demogen.stages import REGISTRY, StageContext, StageSpec
+from demogen import telemetry
 from demogen.exec.base import result_key
+from demogen.stages import REGISTRY, StageContext, StageSpec
 from demogen.store.cache import StageCache
 
 
@@ -16,11 +17,13 @@ class LocalExecutor:
 
     def run(self, stage_name: str, ctx: StageContext, inputs: dict[str, Any]) -> dict[str, Any]:
         spec = self.registry[stage_name]
-        cache = StageCache(ctx.store)
-        key = result_key(spec, ctx, inputs)
-        cached = cache.get(spec.name, key)
-        if cached is not None:
-            return cached
-        outputs = spec.fn(ctx, inputs)
-        cache.put(spec.name, key, outputs)
-        return outputs
+        with telemetry.span(f"stage {spec.name}", demogen__run_id=ctx.run_id, demogen__stage=spec.name, demogen__pool=spec.pool) as span:
+            cache = StageCache(ctx.store)
+            key = result_key(spec, ctx, inputs)
+            cached = cache.get(spec.name, key)
+            span.set_attribute("demogen.cache_hit", cached is not None)
+            if cached is not None:
+                return cached
+            outputs = spec.fn(ctx, inputs)
+            cache.put(spec.name, key, outputs)
+            return outputs

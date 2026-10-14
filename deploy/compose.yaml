@@ -18,6 +18,8 @@ x-demogen: &demogen
     AWS_SECRET_ACCESS_KEY: demogen-secret
     AWS_DEFAULT_REGION: us-east-1
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # Tracing is off unless this points at a collector (the image then needs EXTRAS=service,otel).
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   volumes:
     - ../demogen.example.yaml:/app/demogen.yaml:ro
   depends_on:
