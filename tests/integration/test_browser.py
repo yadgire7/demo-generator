@@ -192,3 +192,26 @@ def test_sign_in_is_kept_out_of_the_recording_and_secrets_out_of_sight(harness, 
     for artifact in ("actions.lock.json", "events.jsonl", "playbook.json"):
         text = h.path("r1", artifact).read_text()
         assert "ada.lovelace" not in text and "correct-horse" not in text
+
+
+def test_typing_in_the_take_leaves_what_rehearsal_left(harness, scripted_llm, app_url, tmp_path):
+    # The field refills itself with 1 when emptied. Rehearsal sets it to 3; the take, typing
+    # like a person, must arrive at 3 too, not 13.
+    scripted_llm.turns = [[("fill", {"ref": Ref('spinbutton "Copies"'), "text": "3"})], [("step_done", {"evidence": ["Copies to print: 3"]})]]
+    steps = [{"id": "copies", "do": "Set the number of copies to 3", "expect": "Three copies are set"}]
+    h = harness(real="browser")
+    assert h.start(_playbook(tmp_path, app_url, steps), auto_approve=True, **SCRIPTED).phase == "done"
+    assert h.calls["rehearse"] == 1 and h.json("r1", "actions.lock.json")["steps"][0]["expect_text"] == ["Copies to print: 3"]
+
+
+def test_a_take_that_ends_up_somewhere_else_says_what_was_missing(harness, scripted_llm, app_url, tmp_path):
+    scripted_llm.turns = [[("fill", {"ref": Ref('spinbutton "Copies"'), "text": "3"})], [("step_done", {"evidence": ["Copies to print: 3"]})]]
+    steps = [{"id": "copies", "do": "Set the number of copies to 3"}]
+    h = harness(real="browser")
+    h.start(_playbook(tmp_path, app_url, steps), recording={"max_heals": 0}, **SCRIPTED)
+    plan = h.json("r1", "actions.lock.json")
+    plan["steps"][0]["expect_text"] = ["Copies to print: 30"]  # something the take will not produce
+    edit = tmp_path / "plan.yaml"
+    edit.write_text(yaml.safe_dump(plan))
+    with pytest.raises(RunError, match="did not show 'Copies to print: 30', which it showed at this point in rehearsal"):
+        h.runtime.approve("r1", edit)

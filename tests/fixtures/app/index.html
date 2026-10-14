@@ -24,6 +24,8 @@
 <div class="spacer"></div>
 <button id="archive">Archive all</button>
 <p id="status"></p>
+<label>Copies <input type="number" id="copies" value="1" min="1" style="width:4em;font:inherit"></label>
+<p id="copies-shown">Copies to print: 1</p>
 <div id="toast" style="position:fixed;top:16px;right:16px;padding:16px 32px;background:#1d6f42;color:#fff;font-size:24px;display:none">Task saved</div>
 <script>
 const tasks = [];
@@ -53,6 +55,11 @@ document.getElementById('new').onsubmit = (e) => {
 };
 document.getElementById('archive').onclick = () => { tasks.length = 0; render(); document.getElementById('status').textContent = 'Everything archived'; };
 onhashchange = render;
+const copies = document.getElementById('copies');
+copies.oninput = () => {
+  if (copies.value === '') copies.value = 1;  // never left empty
+  document.getElementById('copies-shown').textContent = 'Copies to print: ' + copies.value;
+};
 </script>
 </body>
 </html>

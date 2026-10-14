@@ -71,7 +71,11 @@ def run_take(session: BrowserSession, playbook: Playbook, plan: Plan, video: Pat
                 for action in step.actions:
                     take.perform(action, step.step_id)
                 for text in step.expect_text:
-                    page.get_by_text(text).first.wait_for(state="visible", timeout=EXPECT_TIMEOUT_MS)
+                    try:
+                        page.get_by_text(text).first.wait_for(state="visible", timeout=EXPECT_TIMEOUT_MS)
+                    except PlaywrightError:
+                        # The actions ran, but the page did not end up as it did in rehearsal.
+                        raise ActionFailed(f"the page did not show {text!r}, which it showed at this point in rehearsal") from None
             except ActionFailed as error:
                 raise StepFailed(step.step_id, str(error)) from error
             except PlaywrightError as error:
@@ -148,7 +152,10 @@ class _Take:
                 self.events.add("click", step_id=step_id, x=round(x, 1), y=round(y, 1))
                 element.click()
                 if action.type == "fill":
-                    element.fill("")
+                    # Type over whatever is there, as a person would: select it all, then type.
+                    # Clearing the field first is not the same thing: a field that refills
+                    # itself when emptied (a quantity snapping back to 1) would end up with both.
+                    element.press("ControlOrMeta+a")
                     element.press_sequentially(resolve_secrets(action.text), delay=TYPE_DELAY_MS)
             self.page.wait_for_load_state("load")
         self.page.wait_for_timeout(ACTION_SETTLE_MS)
