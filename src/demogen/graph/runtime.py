@@ -98,31 +98,58 @@ class Runtime:
 
     # Preparing: check the request and store what it brings.
 
-    def prepare_start(self, playbook: bytes, intent: bytes | None, config: Config, run_id: str | None = None, name: str = "run") -> tuple[str, Step]:
-        parse_playbook(playbook.decode())  # fail before a run exists, not inside it
+    def prepare_start(
+        self,
+        playbook: bytes | None,
+        intent: bytes | None,
+        config: Config,
+        run_id: str | None = None,
+        name: str = "run",
+        *,
+        prompt: str | None = None,
+        url: str | None = None,
+    ) -> tuple[str, Step]:
+        """Begin a run from a playbook, or from a `prompt` describing the demo for one to be drafted."""
+        if (playbook is None) == (not prompt or not prompt.strip()):
+            raise RunError("start a run with either a playbook or a prompt describing the demo, not both")
+        if playbook is not None:
+            parse_playbook(playbook.decode())  # fail before a run exists, not inside it
         run_id = run_id or f"{name}-{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
         if self.stores.exists(run_id):
             raise RunError(f"run {run_id!r} already exists")
         store = self.stores.for_run(run_id)
         store.put_bytes(CONFIG_FILE, yaml.safe_dump(config.model_dump(mode="json")).encode())
-        state = {
+        state: dict[str, Any] = {
             "state_version": STATE_VERSION,
             "run_id": run_id,
-            "playbook_src": store.put_bytes("playbook.yaml", playbook),
             "intent_src": store.put_bytes("intent.md", intent) if intent else None,
         }
+        if playbook is not None:
+            state["playbook_src"] = store.put_bytes("playbook.yaml", playbook)
+        else:
+            state["prompt_src"] = store.put_bytes("prompt.md", prompt.strip().encode())
+            state["target_url"] = url
         return run_id, {"kind": "start", "state": state}
 
-    def prepare_approval(self, run_id: str, edit: str | None = None) -> Step:
+    def prepare_approval(self, run_id: str, edit: str | None = None, feedback: str | None = None) -> Step:
+        """Approve what the run waits on, replace it with an edited version, or (for a drafted playbook) ask for changes."""
         status = self.status(run_id)
         if status.phase != "awaiting_approval":
             raise RunError(f"run {run_id} is not waiting for approval (it is {status.phase})")
-        artifact = self._store_edit(run_id, status.awaiting["kind"], edit) if edit is not None else None
-        return {"kind": "approve", "decision": {"artifact": artifact}}
+        kind = status.awaiting["kind"]
+        if edit is not None and feedback:
+            raise RunError("send either an edited file or feedback, not both")
+        if feedback and kind != "playbook":
+            raise RunError(f"feedback in words is only taken for a drafted playbook; to change the {kind}, send an edited copy of it")
+        artifact = self._store_edit(run_id, kind, edit) if edit is not None else None
+        return {"kind": "approve", "decision": {"artifact": artifact, "feedback": feedback.strip() if feedback else None}}
 
     def _store_edit(self, run_id: str, kind: str, edit: str) -> ArtifactRef:
         """Validate an author's edited plan or story and store it in place of the generated one."""
         ctx = self.context(run_id)
+        if kind == "playbook":
+            parse_playbook(edit)  # the author's own file is kept as they wrote it, once it is known to be valid
+            return ctx.store.put_bytes("playbook.yaml", edit.encode())
         path, schema = EDITABLE[kind]
         edited = schema.model_validate(yaml.safe_load(edit))
         playbook = Playbook.model_validate(ctx.store.get_json("playbook.json"))
@@ -190,13 +217,30 @@ class Runtime:
 
     # Doing both at once, for callers that wait: the command line and tests.
 
-    def start(self, playbook: Path, intent: Path | None, config: Config, run_id: str | None = None) -> RunStatus:
-        run_id, step = self.prepare_start(playbook.read_bytes(), intent.read_bytes() if intent else None, config, run_id, playbook.stem)
+    def start(
+        self,
+        playbook: Path | None,
+        intent: Path | None,
+        config: Config,
+        run_id: str | None = None,
+        *,
+        prompt: str | None = None,
+        url: str | None = None,
+    ) -> RunStatus:
+        run_id, step = self.prepare_start(
+            playbook.read_bytes() if playbook else None,
+            intent.read_bytes() if intent else None,
+            config,
+            run_id,
+            playbook.stem if playbook else "demo",
+            prompt=prompt,
+            url=url,
+        )
         self.advance(run_id, step)
         return self.status(run_id)
 
-    def approve(self, run_id: str, edit: Path | None = None) -> RunStatus:
-        self.advance(run_id, self.prepare_approval(run_id, edit.read_text() if edit else None))
+    def approve(self, run_id: str, edit: Path | None = None, feedback: str | None = None) -> RunStatus:
+        self.advance(run_id, self.prepare_approval(run_id, edit.read_text() if edit else None, feedback))
         return self.status(run_id)
 
     def resume(self, run_id: str) -> RunStatus:

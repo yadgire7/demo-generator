@@ -28,6 +28,10 @@ class RunState(TypedDict, total=False):
 
     state_version: int
     run_id: str
+    prompt_src: ArtifactRef | None  # set when the run starts from a request and not a playbook
+    target_url: str | None
+    playbook_feedback: str | None  # the author's requested changes to the drafted playbook
+    draft_round: int
     playbook_src: ArtifactRef
     intent_src: ArtifactRef | None
     playbook: ArtifactRef
@@ -51,6 +55,8 @@ class RunState(TypedDict, total=False):
 
 # node -> (state keys passed to the stage of the same name, stage outputs written back to state)
 WIRING: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    # `draft_round` keeps each redraft a distinct cache entry, as `rewrite_round` does for the story.
+    "draft_playbook": (("prompt_src", "target_url", "playbook_src", "playbook_feedback", "draft_round"), ("playbook_src",)),
     "load_validate": (("playbook_src", "intent_src"), ("playbook", "intent")),
     "setup": (("playbook",), ("auth_state",)),
     "rehearse": (("playbook", "auth_state"), ("plan",)),
@@ -73,9 +79,11 @@ WIRING: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 
 # Approval pauses: node -> (what is being approved, the state key holding it)
 APPROVALS = {"approve_plan": ("plan", "plan"), "approve_story": ("story", "story")}
+# The drafted playbook's pause also takes feedback in words, which sends it back to be redrafted.
+PLAYBOOK_APPROVAL = "approve_playbook"
 
 # Nodes a rerun may start from. `synthesize_step` is excluded: it only runs as a fan-out task.
-RERUNNABLE = (*WIRING, *APPROVALS)
+RERUNNABLE = (*WIRING, PLAYBOOK_APPROVAL, *APPROVALS)
 
 
 def build_graph(executor: StageExecutor, ctx_for: Callable[[str], StageContext]) -> StateGraph:
@@ -100,6 +108,19 @@ def build_graph(executor: StageExecutor, ctx_for: Callable[[str], StageContext])
 
         return node
 
+    def draft_playbook(state: RunState) -> dict[str, Any]:
+        update = stage_node("draft_playbook")(state)
+        update["playbook_feedback"] = None  # acted on; the new draft goes back to the author
+        return update
+
+    def approve_playbook(state: RunState) -> dict[str, Any]:
+        if ctx_for(state["run_id"]).config.auto_approve:
+            return {}
+        decision = interrupt({"kind": "playbook", "artifact": state["playbook_src"]})
+        if decision.get("feedback"):
+            return {"playbook_feedback": decision["feedback"], "draft_round": state.get("draft_round", 0) + 1}
+        return {"playbook_src": decision["artifact"]} if decision.get("artifact") else {}
+
     def write_story(state: RunState) -> dict[str, Any]:
         update = stage_node("write_story")(state)
         if state.get("flagged"):
@@ -123,14 +144,22 @@ def build_graph(executor: StageExecutor, ctx_for: Callable[[str], StageContext])
         return "write_story" if state.get("flagged") and rounds_left else "render"
 
     graph = StateGraph(RunState)
+    custom = {"draft_playbook": draft_playbook, "write_story": write_story}
     for name in WIRING:
-        graph.add_node(name, write_story if name == "write_story" else stage_node(name))
+        graph.add_node(name, custom.get(name) or stage_node(name))
     for name in APPROVALS:
         graph.add_node(name, approval_node(name))
+    graph.add_node(PLAYBOOK_APPROVAL, approve_playbook)
     graph.add_node("synthesize_step", synthesize_step)
 
+    # A run that starts from a request drafts its playbook first; one given a playbook goes straight in.
+    graph.add_conditional_edges(START, lambda state: "draft_playbook" if state.get("prompt_src") else "load_validate", ["draft_playbook", "load_validate"])
+    graph.add_edge("draft_playbook", PLAYBOOK_APPROVAL)
+    graph.add_conditional_edges(
+        PLAYBOOK_APPROVAL, lambda state: "draft_playbook" if state.get("playbook_feedback") else "load_validate", ["draft_playbook", "load_validate"]
+    )
     spine = [
-        START, "load_validate", "setup", "rehearse", "approve_plan", "record_take", "verify_take",
+        "load_validate", "setup", "rehearse", "approve_plan", "record_take", "verify_take",
         "extract_keyframes", "analyze_frames", "write_story", "approve_story",
     ]  # fmt: skip
     for source, target in zip(spine, spine[1:]):

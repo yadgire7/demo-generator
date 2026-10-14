@@ -19,6 +19,10 @@ from demogen.service.core import Service
 PRIVATE_PREFIXES = ("auth/", ".")
 
 
+class FeedbackRequest(BaseModel):
+    feedback: str
+
+
 class RerunRequest(BaseModel):
     from_stage: str
     intent: str | None = None
@@ -60,7 +64,7 @@ def create_api(service: Service) -> FastAPI:
         final = state.get("final") or {}
         described["artifacts"] = {
             name: ref["path"]
-            for name, ref in (("video", final.get("video")), ("captions", final.get("srt")), ("report", state.get("report")), ("plan", state.get("plan")), ("story", state.get("story")))
+            for name, ref in (("video", final.get("video")), ("captions", final.get("srt")), ("report", state.get("report")), ("playbook", state.get("playbook_src")), ("plan", state.get("plan")), ("story", state.get("story")))
             if ref
         }
         if described["awaiting"]:
@@ -69,14 +73,19 @@ def create_api(service: Service) -> FastAPI:
 
     @api.post("/runs", status_code=202)
     async def start_run(
-        playbook: Annotated[UploadFile, File()],
+        playbook: Annotated[UploadFile | None, File()] = None,
+        prompt: Annotated[str | None, Form()] = None,
+        url: Annotated[str | None, Form()] = None,
         intent: Annotated[UploadFile | None, File()] = None,
         config: Annotated[UploadFile | None, File()] = None,
         run_id: Annotated[str | None, Form()] = None,
     ) -> dict[str, Any]:
+        """Start a run from a `playbook` file, or from a `prompt` describing the demo, for a playbook to be drafted."""
         settings = Config.model_validate(yaml.safe_load(await config.read()) or {}) if config else load_config(service.settings.default_config)
-        name = (playbook.filename or "run").rsplit(".", 1)[0]
-        run_id, step = service.runtime.prepare_start(await playbook.read(), await intent.read() if intent else None, settings, run_id, name)
+        name = (playbook.filename or "run").rsplit(".", 1)[0] if playbook else "demo"
+        run_id, step = service.runtime.prepare_start(
+            await playbook.read() if playbook else None, await intent.read() if intent else None, settings, run_id, name, prompt=prompt, url=url
+        )
         service.runs.add(run_id, name)
         service.submit(run_id, step)
         return summary(run_id)
@@ -94,10 +103,17 @@ def create_api(service: Service) -> FastAPI:
 
     @api.post("/runs/{run_id}/approve", status_code=202)
     async def approve(run_id: str, request: Request) -> dict[str, Any]:
-        """Approve what the run is waiting on. A request body, if any, is the edited plan or story."""
+        """Approve what the run is waiting on. A request body, if any, is the edited playbook, plan or story."""
         idle(run_id)
         body = (await request.body()).decode()
         service.submit(run_id, service.runtime.prepare_approval(run_id, body if body.strip() else None))
+        return summary(run_id)
+
+    @api.post("/runs/{run_id}/feedback", status_code=202)
+    def feedback(run_id: str, body: FeedbackRequest) -> dict[str, Any]:
+        """Send a drafted playbook back with changes to make. It is redrafted and waits for approval again."""
+        idle(run_id)
+        service.submit(run_id, service.runtime.prepare_approval(run_id, feedback=body.feedback))
         return summary(run_id)
 
     @api.post("/runs/{run_id}/resume", status_code=202)

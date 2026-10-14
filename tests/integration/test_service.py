@@ -19,7 +19,7 @@ from demogen.service.api import create_api
 from demogen.service.core import Service
 from demogen.service.settings import Settings
 from demogen.stages import StageError
-from tests.conftest import ROOT, all_fakes, wait_for
+from tests.conftest import ROOT, SCRIPTED, all_fakes, wait_for
 
 TOKEN = "test-token"
 STAGE_POOLS = {
@@ -306,3 +306,26 @@ def test_a_trace_follows_a_run_across_the_queue(deployment, playbook, spans):
     assert ran.parent.span_id == queued.context.span_id  # on a browser worker, under the wait that queued it
     assert {span.context.trace_id for span in spans()} == {submit.context.trace_id}
     assert sum(span.name == "stage synthesize_step" for span in spans()) == 4
+
+
+def test_api_drafts_a_playbook_from_a_prompt_and_takes_feedback(deployment, scripted_llm):
+    step = {"id": "add", "do": "Add a todo", "expect": "It is listed", "say_hint": "Quick.", "dwell_seconds": 2}
+    draft = {"name": "Todos", "base_url": "https://demo.playwright.dev/todomvc", "audience": "developers", "tone": "brisk", "key_messages": [], "cta": "", "steps": [step]}
+    scripted_llm.replies = [draft, {**draft, "steps": [step, {**step, "id": "tick", "do": "Tick it off"}]}]
+    api, _ = deployment()
+    client = TestClient(create_api(api), headers={"Authorization": f"Bearer {TOKEN}"})
+
+    started = client.post("/runs", data={"prompt": "Show adding a todo in TodoMVC.", "run_id": "web3"}, files={"config": ("c.yaml", yaml.safe_dump(SCRIPTED).encode())})
+    assert started.status_code == 202
+    waiting = _wait_http(client, "web3", "awaiting_approval")
+    assert waiting["awaiting"] == {"kind": "playbook", "artifact": "playbook.yaml"} and waiting["artifacts"]["playbook"] == "playbook.yaml"
+    assert "id: add" in client.get("/runs/web3/artifacts/playbook.yaml").text
+
+    assert client.post("/runs/web3/feedback", json={"feedback": "Also tick it off."}).status_code == 202
+    wait_for(lambda: "id: tick" in client.get("/runs/web3/artifacts/playbook.yaml").text, what="the redraft")
+    assert _wait_http(client, "web3", "awaiting_approval")["awaiting"]["kind"] == "playbook"
+
+    assert client.post("/runs/web3/approve").status_code == 202
+    wait_for(lambda: (client.get("/runs/web3").json()["awaiting"] or {}).get("kind") == "plan", what="the plan approval")
+    assert client.post("/runs/web3/feedback", json={"feedback": "Click elsewhere."}).status_code == 400  # only the playbook takes feedback
+    assert client.post("/runs", data={"run_id": "web4"}).status_code == 400  # neither a playbook nor a prompt

@@ -13,7 +13,7 @@ from demogen.stages import REGISTRY, StageError
 from tests.conftest import fake_plan_timeline, fake_qa_audio
 
 STEPS = ["add-first", "add-second", "complete-first", "filter-active"]
-ONCE_PER_RUN = [name for name in REGISTRY if name != "synthesize_step"]
+ONCE_PER_RUN = [name for name in REGISTRY if name not in ("synthesize_step", "draft_playbook")]
 
 
 def test_auto_approved_run_completes(harness, playbook):
@@ -22,6 +22,7 @@ def test_auto_approved_run_completes(harness, playbook):
     assert status.phase == "done"
     assert all(h.calls[name] == 1 for name in ONCE_PER_RUN), h.calls
     assert h.calls["synthesize_step"] == len(STEPS)
+    assert h.calls["draft_playbook"] == 0  # the run was given its playbook
     assert set(status.state["clips"]) == set(STEPS)
     report = h.json("r1", "report.json")
     assert report["steps"] == 4 and report["final"] == {"video": None, "srt": None}  # the edit stages are stand-ins here

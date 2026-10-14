@@ -30,6 +30,8 @@ def _report(status: RunStatus, runs_dir: Path) -> None:
         kind, artifact = status.awaiting["kind"], status.awaiting["artifact"]["path"]
         typer.echo(f"status  waiting for you to approve the {kind}: {runs_dir / status.run_id / artifact}")
         typer.echo(f"next    demogen approve {status.run_id}   (add --edit FILE to replace the {kind})")
+        if kind == "playbook":
+            typer.echo(f'        demogen approve {status.run_id} --feedback "what to change"   (to have it redrafted)')
     elif status.phase == "incomplete":
         typer.echo(f"status  stopped before: {', '.join(status.next) or 'the first stage'}")
         typer.echo(f"next    demogen resume {status.run_id}")
@@ -57,18 +59,20 @@ def _run(runs_dir: Path, action) -> None:
 
 @app.command()
 def run(
-    playbook: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    playbook: Annotated[Optional[Path], typer.Argument(exists=True, dir_okay=False, help="The playbook to run. Omit it and pass --prompt to have one drafted.")] = None,
+    prompt: Annotated[Optional[str], typer.Option(help="Describe the demo in words; a playbook is drafted for you to approve, edit or send back.")] = None,
+    url: Annotated[Optional[str], typer.Option(help="With --prompt: the address the demo starts at, if the prompt does not make it clear.")] = None,
     intent: Annotated[Optional[Path], typer.Option(exists=True, dir_okay=False, help="The author's brief (markdown).")] = None,
     config: Annotated[Optional[Path], typer.Option(exists=True, dir_okay=False, help="Defaults to ./demogen.yaml if present.")] = None,
-    auto_approve: Annotated[bool, typer.Option("--auto-approve", help="Do not pause for plan and story approval.")] = False,
+    auto_approve: Annotated[bool, typer.Option("--auto-approve", help="Do not pause for approvals.")] = False,
     run_id: Annotated[Optional[str], typer.Option(help="Name the run instead of generating an id.")] = None,
     runs_dir: RunsDir = Path("runs"),
 ) -> None:
-    """Start a new run from a playbook."""
+    """Start a new run from a playbook, or from a prompt describing the demo."""
     settings = load_config(config or (DEFAULT_CONFIG if DEFAULT_CONFIG.is_file() else None))
     if auto_approve:
         settings = settings.model_copy(update={"auto_approve": True})
-    _run(runs_dir, lambda rt: rt.start(playbook, intent, settings, run_id))
+    _run(runs_dir, lambda rt: rt.start(playbook, intent, settings, run_id, prompt=prompt, url=url))
 
 
 @app.command()
@@ -80,11 +84,12 @@ def status(run_id: str, runs_dir: RunsDir = Path("runs")) -> None:
 @app.command()
 def approve(
     run_id: str,
-    edit: Annotated[Optional[Path], typer.Option(exists=True, dir_okay=False, help="An edited plan or story (YAML or JSON) to use instead.")] = None,
+    edit: Annotated[Optional[Path], typer.Option(exists=True, dir_okay=False, help="An edited playbook, plan or story (YAML or JSON) to use instead.")] = None,
+    feedback: Annotated[Optional[str], typer.Option(help="For a drafted playbook: what to change. It is redrafted and comes back for approval.")] = None,
     runs_dir: RunsDir = Path("runs"),
 ) -> None:
-    """Approve the plan or story a run is waiting on, optionally replacing it with an edited file."""
-    _run(runs_dir, lambda rt: rt.approve(run_id, edit))
+    """Approve what a run is waiting on, replace it with an edited file, or send a drafted playbook back with feedback."""
+    _run(runs_dir, lambda rt: rt.approve(run_id, edit, feedback))
 
 
 @app.command()

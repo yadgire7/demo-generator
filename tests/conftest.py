@@ -151,8 +151,8 @@ class Harness:
 
         return wrapper
 
-    def start(self, playbook: Path, run_id: str = "r1", intent: Path | None = None, **config):
-        return self.runtime.start(playbook, intent, Config(**config), run_id)
+    def start(self, playbook: Path | None, run_id: str = "r1", intent: Path | None = None, *, prompt: str | None = None, url: str | None = None, **config):
+        return self.runtime.start(playbook, intent, Config(**config), run_id, prompt=prompt, url=url)
 
     def json(self, run_id: str, path: str):
         return self.runtime.context(run_id).store.get_json(path)
