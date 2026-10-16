@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
+from urllib.parse import urljoin
 
 from playwright.sync_api import Error as PlaywrightError
 
@@ -16,6 +18,13 @@ from demogen.playbook.secrets import Redactor
 
 MAX_TURNS = 12
 SETTLE_MS = 300
+# How long a hover is given to show something (a menu, a tooltip) before it counts as doing nothing.
+HOVER_EFFECT_MS = 1200
+HOVER_POLL_MS = 150
+MAX_WAIT_S = 5.0
+
+# Parts of a snapshot line that change without the page changing: element refs, focus, cursor.
+_INCIDENTAL = re.compile(r"\s*\[(?:ref=[^\]]*|active|cursor=[^\]]*)\]")
 
 SYSTEM = """\
 You are rehearsing a product demo in a real browser. You are given one step at a time: what \
@@ -28,6 +37,14 @@ product would: no exploratory clicks, nothing the step did not ask for, and no u
 
 Elements are addressed by the ref shown in the page snapshot, for example [ref=e12]. After \
 your tool calls you get a fresh snapshot; refs from older snapshots no longer apply.
+
+Only actions that do something go in the recording. When you just need to see the page again \
+(a message appearing, a page still loading, a list updating), call `wait`: it records nothing. \
+Never use hover, goto or any other action merely to refresh your view or to check something. \
+The finished video already shows the pointer moving to each element you act on, so there is \
+no need to hover before a click. Hover only where the step needs something that appears on \
+hover, such as a menu. If an action does not take you where the step needs, look again with \
+`wait` before acting again.
 
 Text of the form ${secret:NAME} is a placeholder for a credential. Pass it to `fill` exactly \
 as written; the real value is substituted outside your view.
@@ -46,6 +63,9 @@ TOOLS = [
     tool("hover", "Move the pointer over an element.", _REF),
     tool("select_option", "Choose an option in a dropdown.", {**_REF, "value": {"type": "string", "description": "The option's label or value"}}),
     tool("goto", "Navigate to a URL. Relative URLs are resolved against the demo's base URL.", {"url": {"type": "string"}}),
+    tool("wait", "Wait for the page to settle, then look at it again. Records nothing.", {
+        "seconds": {"type": "number", "description": "How long to wait, from 0.5 to 5"},
+    }),
     tool("step_done", "Finish the step once its expected outcome is visible.", {
         "evidence": {"type": "array", "items": {"type": "string"}, "description": "One to three short texts visible on the page now that show the step worked"},
     }),
@@ -64,16 +84,34 @@ class _Rehearsal:
         self.session = session
         self.actions: list[Action] = []
 
+    def _page_state(self) -> str:
+        """What the page shows, ignoring what changes without it changing."""
+        try:
+            return self.session.page.url + "\n" + _INCIDENTAL.sub("", self.session.page.aria_snapshot(mode="ai"))
+        except PlaywrightError:
+            return ""  # the page is mid-navigation: something is certainly changing
+
     def _on_element(self, kind: str, ref: str, text: str | None = None) -> str:
         try:
             element = self.session.by_ref(ref)
             target, label = self.session.durable_locators(ref, element)
             action = Action(type=kind, target=target, label=label, text=text)
+            before = self._page_state() if kind == "hover" else None
             self.session.perform(action, element)
         except ActionFailed as error:
             raise ToolError(str(error)) from error
+        if before is not None and not self._changed_since(before):
+            return "Hovering there changed nothing on the page, so it is not part of the recording."
         self.actions.append(action)
         return "ok"
+
+    def _changed_since(self, before: str) -> bool:
+        """Whether the page shows something new within a moment: a hover menu can take a little while to open."""
+        for _ in range(HOVER_EFFECT_MS // HOVER_POLL_MS):
+            if self._page_state() != before:
+                return True
+            self.session.page.wait_for_timeout(HOVER_POLL_MS)
+        return self._page_state() != before
 
     def _on_page(self, action: Action) -> str:
         try:
@@ -99,7 +137,13 @@ class _Rehearsal:
         return self._on_page(Action(type="press", key=key))
 
     def goto(self, url: str) -> str:
+        if urljoin(self.session.target.base_url, url) == self.session.page.url:
+            return "The page is already at that address, so nothing was done or recorded."
         return self._on_page(Action(type="goto", url=url))
+
+    def wait(self, seconds: float) -> str:
+        self.session.page.wait_for_timeout(min(max(seconds, 0.5), MAX_WAIT_S) * 1000)
+        return "waited"
 
     def step_done(self, evidence: list[str]) -> Stop:
         if not 1 <= len(evidence) <= 3:

@@ -481,9 +481,16 @@ Recorded as each milestone lands.
   step's expected text never appeared. The take now selects the existing text and types over it.
 - **Fixed: a missed expectation said only "Timeout".** It now names the text that did not
   appear and says that rehearsal had shown it.
-- **Open: stray actions in rehearsed plans.** On the Toolshop the model added three hovers and
-  a direct jump to the cart page, all recorded and due to be replayed. The plan approval
-  caught them. The rehearsal agent needs a way to look around without it going in the plan.
+- **Fixed: stray actions in rehearsed plans.** On the Toolshop the model added three hovers and
+  a direct jump to the cart page, all recorded and due to be replayed. The cause: the
+  rehearsal agent had no way to look at the page again except by acting, so it hovered to
+  refresh its view. It now has a `wait` tool that records nothing; hovers that change nothing
+  on the page and gotos to the address already open are left out of the plan, and the model
+  is told so. Two fresh Toolshop rehearsals afterwards each recorded only the step's own
+  actions, and the plan replayed to a finished video with no manual edit.
+- **Open: weak evidence.** One of those rehearsals chose the word "cart" as proof that the
+  item was added, though it is on the page before the click too. Evidence that was already
+  visible when the step began could be refused.
 - **Open: repair attempts are wasted on failures re-rehearsal cannot fix.** The typing bug
   cost two repairs and three takes before the run gave up.
 - **Open: locators anchored on per-load random ids**, seen in an Amazon plan for a link with

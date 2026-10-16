@@ -215,3 +215,32 @@ def test_a_take_that_ends_up_somewhere_else_says_what_was_missing(harness, scrip
     edit.write_text(yaml.safe_dump(plan))
     with pytest.raises(RunError, match="did not show 'Copies to print: 30', which it showed at this point in rehearsal"):
         h.runtime.approve("r1", edit)
+
+
+def test_only_actions_that_do_something_are_recorded(harness, scripted_llm, app_url, tmp_path):
+    scripted_llm.turns = [
+        [("fill", {"ref": Ref('textbox "New task"'), "text": "Ship it"}), ("click", {"ref": Ref('button "Add"')})],
+        [("wait", {"seconds": 1})],  # to look again: never recorded
+        [("hover", {"ref": Ref('heading "Tasks"')})],  # changes nothing: left out
+        [("goto", {"url": "index.html"})],  # already there: left out
+        [("hover", {"ref": Ref('button "Help"')})],  # shows a tooltip at once: kept
+        [("hover", {"ref": Ref('button "More"')})],  # opens a menu after a moment: kept
+        [("step_done", {"evidence": ["Ship it"]})],
+    ]
+    steps = [{"id": "add", "do": "Add a task called Ship it"}]
+    h = harness(real="browser")
+    h.start(_playbook(tmp_path, app_url, steps), **SCRIPTED)
+    actions = h.json("r1", "actions.lock.json")["steps"][0]["actions"]
+    assert [(a["type"], a["label"]) for a in actions] == [
+        ("fill", 'textbox "New task"'), ("click", 'button "Add"'), ("hover", 'button "Help"'), ("hover", 'button "More"'),
+    ]  # fmt: skip
+    told = "\n".join(scripted_llm.transcript)
+    assert "Hovering there changed nothing on the page, so it is not part of the recording." in told
+    assert "The page is already at that address, so nothing was done or recorded." in told
+
+
+def test_a_goto_somewhere_new_is_recorded(harness, scripted_llm, app_url, tmp_path):
+    scripted_llm.turns = [[("goto", {"url": "login.html"})], [("step_done", {"evidence": ["Sign in"]})]]
+    h = harness(real="browser")
+    h.start(_playbook(tmp_path, app_url, [{"id": "go", "do": "Go to the sign-in page"}]), **SCRIPTED)
+    assert [(a["type"], a["url"]) for a in h.json("r1", "actions.lock.json")["steps"][0]["actions"]] == [("goto", "login.html")]
