@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Larkspur Market{% endblock %}
+{% block main %}
+<div class="narrow">
+  <h1>Sign in</h1>
+  {% if error %}<div class="error-summary" role="alert"><p>{{ error }}</p></div>{% endif %}
+  <form action="/signin" method="post" class="stack-form">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field">
+      <label for="email">Email address</label>
+      <input type="email" id="email" name="email" value="{{ email }}" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="primary big">Sign in</button>
+  </form>
+  <aside class="test-note" aria-label="Test account">
+    <p><strong>Test account.</strong> This is a test shop: sign in with <code>{{ test_email }}</code> and the password <code>{{ test_password }}</code>.</p>
+  </aside>
+  <p>New here? You can check out as a guest. <a href="/cart">Go to your cart</a></p>
+</div>
+{% endblock %}

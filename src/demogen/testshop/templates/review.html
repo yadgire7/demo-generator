@@ -1,0 +1,19 @@
+{% extends "_checkout.html" %}
+{% block title %}Review · Checkout · Larkspur Market{% endblock %}
+{% block step %}
+<h2>Review your order</h2>
+{% if error %}
+  <div class="error-summary" role="alert"><h2>Payment failed</h2><p>{{ error }}</p><p><a href="/checkout/payment">Change payment details</a></p></div>
+{% endif %}
+{% set address = session.checkout.address %}
+<dl class="review">
+  <div><dt>Deliver to</dt><dd>{{ address.name }}, {{ address.line1 }}{% if address.line2 %}, {{ address.line2 }}{% endif %}, {{ address.city }} {{ address.postcode }}, {{ address.country }} <a href="/checkout/shipping">Change<span class="visually-hidden"> delivery address</span></a></dd></div>
+  <div><dt>Delivery</dt><dd>{{ delivery[delivery_option][0] }}, {{ delivery[delivery_option][1] }}</dd></div>
+  <div><dt>Confirmation to</dt><dd>{{ session.checkout.email }}</dd></div>
+  <div><dt>Payment</dt><dd>Card ending {{ session.checkout.card_last4 }} <a href="/checkout/payment">Change<span class="visually-hidden"> payment</span></a></dd></div>
+</dl>
+<form action="/checkout/place" method="post">
+  <button type="submit" class="primary big">Place order</button>
+</form>
+<p class="hint">By placing your order you agree to nothing at all: this is a test shop.</p>
+{% endblock %}

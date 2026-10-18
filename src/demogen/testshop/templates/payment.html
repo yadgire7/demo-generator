@@ -1,0 +1,19 @@
+{% extends "_checkout.html" %}
+{% block title %}Payment · Checkout · Larkspur Market{% endblock %}
+{% block step %}
+<h2>Payment</h2>
+<aside class="test-note" aria-label="Test cards">
+  <p><strong>Test shop: no payment is taken.</strong> Pay with the test card <code>4242 4242 4242 4242</code>, any future expiry date and any 3-digit code. The card <code>4000 0000 0000 0002</code> is always declined.</p>
+</aside>
+{% include "_errors.html" %}
+<form action="/checkout/payment" method="post" class="stack-form" novalidate>
+  {% with key="card_name", label="Name on card", autocomplete="cc-name" %}{% include "_field.html" %}{% endwith %}
+  {% with key="card_number", label="Card number", autocomplete="cc-number", inputmode="numeric" %}{% include "_field.html" %}{% endwith %}
+  <div class="row">
+    {% with key="expiry", label="Expiry date (MM/YY)", autocomplete="cc-exp", inputmode="numeric" %}{% include "_field.html" %}{% endwith %}
+    {% with key="cvc", label="Security code", autocomplete="cc-csc", inputmode="numeric", hint="3 digits on the back" %}{% include "_field.html" %}{% endwith %}
+  </div>
+  <button type="submit" class="primary big">Review your order</button>
+  <p><a href="/checkout/shipping">Back to delivery</a></p>
+</form>
+{% endblock %}

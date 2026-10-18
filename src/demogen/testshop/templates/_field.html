@@ -1,0 +1,11 @@
+{# A labelled text field with its error. Set: key, label, and optionally type, autocomplete, optional, hint. #}
+<div class="field{% if errors[key] %} invalid{% endif %}">
+  <label for="{{ key }}">{{ label }}{% if optional %} <span class="hint">(optional)</span>{% endif %}</label>
+  {% if hint %}<p class="hint" id="{{ key }}-hint">{{ hint }}</p>{% endif %}
+  {% if errors[key] %}<p class="field-error" id="{{ key }}-error">{{ errors[key] }}</p>{% endif %}
+  <input type="{{ type or 'text' }}" id="{{ key }}" name="{{ key }}" value="{{ form.get(key, '') }}"
+    {%- if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}
+    {%- if inputmode %} inputmode="{{ inputmode }}"{% endif %}
+    {%- if errors[key] or hint %} aria-describedby="{% if hint %}{{ key }}-hint {% endif %}{% if errors[key] %}{{ key }}-error{% endif %}"{% endif %}
+    {%- if errors[key] %} aria-invalid="true"{% endif %}>
+</div>

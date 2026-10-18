@@ -1,0 +1,14 @@
+{# One product in a grid. The whole card is one link, named by the product. #}
+{% set shown = highlight if highlight is defined and highlight in product.colours else none %}
+<li class="card">
+  <a class="card-link" href="/p/{{ product.slug }}{% if shown %}?colour={{ colour_slug(shown) }}{% endif %}">
+    <img src="/img/{{ product.slug }}/{{ colour_slug(shown or product.colours[0]) }}.svg" alt="" width="400" height="400" loading="lazy">
+    <span class="card-name">{{ product.name }}</span>
+  </a>
+  <p class="card-price">{{ money(product.price) }}</p>
+  <p class="card-meta">
+    <span class="stars" aria-label="Rated {{ product.rating }} out of 5">★ {{ product.rating }}</span>
+    · {{ product.colours|length }} colour{{ 's' if product.colours|length != 1 }}
+    {% if not product.in_stock %}· <strong class="sold-out">Sold out</strong>{% endif %}
+  </p>
+</li>

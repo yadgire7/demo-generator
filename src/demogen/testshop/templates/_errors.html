@@ -1,0 +1,6 @@
+{% if errors %}
+  <div class="error-summary" role="alert">
+    <h2>There {{ 'is a problem' if errors|length == 1 else 'are ' ~ errors|length ~ ' problems' }}</h2>
+    <ul>{% for key, message in errors.items() %}<li><a href="#{{ key }}">{{ message }}</a></li>{% endfor %}</ul>
+  </div>
+{% endif %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{% if query is defined and query %}Results for “{{ query }}”{% else %}{{ title }}{% endif %} · Larkspur Market{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <span>{% if category %}{{ title }}{% else %}Search{% endif %}</span></nav>
+
+{% if category %}
+  <h1>{{ title }}</h1>
+  <p class="lead">{{ blurb }}</p>
+{% elif query %}
+  <h1>Results for “{{ query }}”</h1>
+{% else %}
+  <h1>Search</h1>
+  <p class="lead">Type what you are looking for in the search box above.</p>
+{% endif %}
+
+{% if category or query %}
+<div class="listing">
+  <form class="filters" method="get" aria-labelledby="filters-heading">
+    <h2 id="filters-heading">Filter</h2>
+    {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+    <input type="hidden" name="sort" value="{{ chosen.sort }}">
+    <fieldset>
+      <legend>Colour</legend>
+      {% for colour in facet_colours %}
+        <label class="check"><input type="checkbox" name="colour" value="{{ colour }}"{% if colour in chosen.colours %} checked{% endif %}>
+          <span class="swatch" style="background: {{ colours[colour] }}" aria-hidden="true"></span>{{ colour }}</label>
+      {% endfor %}
+    </fieldset>
+    {% if facet_sizes %}
+    <fieldset>
+      <legend>Size</legend>
+      {% for size in facet_sizes %}
+        <label class="check"><input type="checkbox" name="size" value="{{ size }}"{% if size in chosen.sizes %} checked{% endif %}>{{ size_names[size] }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <fieldset>
+      <legend>Price</legend>
+      {% for key, (label, _, _) in price_bands.items() %}
+        <label class="check"><input type="radio" name="price" value="{{ key }}"{% if chosen.price == key %} checked{% endif %}>{{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <label class="check"><input type="checkbox" name="in_stock" value="1"{% if chosen.in_stock %} checked{% endif %}>In stock only</label>
+    <div class="filter-actions">
+      <button type="submit" class="primary">Apply filters</button>
+      {% if filtered %}<a href="{{ clear_link }}">Clear filters</a>{% endif %}
+    </div>
+  </form>
+
+  <section class="results" aria-labelledby="results-heading">
+    <div class="results-bar">
+      <p id="results-heading" class="count" role="status">
+        {% if total %}Showing {{ first }}–{{ last }} of {{ total }} product{{ 's' if total != 1 }}{% else %}No products found{% endif %}
+      </p>
+      <form method="get" class="sort">
+        {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+        {% for colour in chosen.colours %}<input type="hidden" name="colour" value="{{ colour }}">{% endfor %}
+        {% for size in chosen.sizes %}<input type="hidden" name="size" value="{{ size }}">{% endfor %}
+        {% if chosen.price != 'any' %}<input type="hidden" name="price" value="{{ chosen.price }}">{% endif %}
+        {% if chosen.in_stock %}<input type="hidden" name="in_stock" value="1">{% endif %}
+        <label for="sort">Sort by</label>
+        <select id="sort" name="sort">
+          {% for key, label in sorts.items() %}<option value="{{ key }}"{% if chosen.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit">Sort</button>
+      </form>
+    </div>
+
+    {% if products %}
+      <ul class="grid">
+        {% for product in products %}{% include "_card.html" %}{% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty">
+        <p>Nothing matches{% if query %} “{{ query }}”{% endif %}{% if filtered %} with these filters{% endif %}.</p>
+        {% if filtered %}<p><a href="{{ clear_link }}">Clear filters</a></p>{% else %}<p>Try a shorter search, like “shirt” or “mug”.</p>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if pages > 1 %}
+      <nav class="pager" aria-label="Pages">
+        {% if page > 1 %}<a href="{{ page_link(page - 1) }}" rel="prev">Previous page</a>{% endif %}
+        {% for n in range(1, pages + 1) %}
+          {% if n == page %}<span aria-current="page">Page {{ n }}</span>{% else %}<a href="{{ page_link(n) }}">Page {{ n }}</a>{% endif %}
+        {% endfor %}
+        {% if page < pages %}<a href="{{ page_link(page + 1) }}" rel="next">Next page</a>{% endif %}
+      </nav>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

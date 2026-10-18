@@ -1,0 +1,53 @@
+{% extends "_checkout.html" %}
+{% block title %}Delivery · Checkout · Larkspur Market{% endblock %}
+{% block step %}
+<h2>Delivery</h2>
+{% include "_errors.html" %}
+<form action="/checkout/shipping" method="post" class="stack-form" novalidate>
+  {% if not session.user %}
+    <p class="hint">Checking out as a guest. <a href="/signin?next=/checkout/shipping">Sign in</a> to use your saved addresses.</p>
+    {% with key="email", label="Email address", type="email", autocomplete="email", hint="We send your order confirmation here." %}{% include "_field.html" %}{% endwith %}
+  {% endif %}
+
+  <fieldset>
+    <legend>Deliver to</legend>
+    {% for address in saved %}
+      <label class="check choice"><input type="radio" name="address" value="saved-{{ loop.index0 }}"{% if form.address == 'saved-' ~ loop.index0 %} checked{% endif %}>
+        <span><strong>{{ address.name }}</strong>, {{ address.line1 }}{% if address.line2 %}, {{ address.line2 }}{% endif %}, {{ address.city }} {{ address.postcode }}, {{ address.country }}</span></label>
+    {% endfor %}
+    {% if saved %}
+      <label class="check choice"><input type="radio" name="address" value="new"{% if form.address == 'new' %} checked{% endif %}><span>A new address</span></label>
+    {% else %}
+      <input type="hidden" name="address" value="new">
+    {% endif %}
+    <div class="new-address"{% if saved and form.address != 'new' %} data-hidden-until-new{% endif %}>
+      {% with key="name", label="Full name", autocomplete="name" %}{% include "_field.html" %}{% endwith %}
+      {% with key="line1", label="Address line 1", autocomplete="address-line1" %}{% include "_field.html" %}{% endwith %}
+      {% with key="line2", label="Address line 2", autocomplete="address-line2", optional=True %}{% include "_field.html" %}{% endwith %}
+      <div class="row">
+        {% with key="city", label="Town or city", autocomplete="address-level2" %}{% include "_field.html" %}{% endwith %}
+        {% with key="postcode", label="Postcode or ZIP code", autocomplete="postal-code" %}{% include "_field.html" %}{% endwith %}
+      </div>
+      <div class="field{% if errors.country %} invalid{% endif %}">
+        <label for="country">Country</label>
+        {% if errors.country %}<p class="field-error">{{ errors.country }}</p>{% endif %}
+        <select id="country" name="country" autocomplete="country-name">
+          {% for country in countries %}<option{% if form.get('country') == country %} selected{% endif %}>{{ country }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset id="delivery">
+    <legend>Delivery speed</legend>
+    {% if errors.delivery %}<p class="field-error">{{ errors.delivery }}</p>{% endif %}
+    <label class="check choice"><input type="radio" name="delivery" value="standard"{% if form.delivery == 'standard' %} checked{% endif %}>
+      <span><strong>Standard delivery</strong>, 3 to 5 working days: {% if standard_cost %}{{ money(standard_cost) }}{% else %}free{% endif %}</span></label>
+    <label class="check choice"><input type="radio" name="delivery" value="express"{% if form.delivery == 'express' %} checked{% endif %}>
+      <span><strong>Express delivery</strong>, next working day: {{ money(express_cost) }}</span></label>
+  </fieldset>
+
+  <button type="submit" class="primary big">Continue to payment</button>
+  <p><a href="/cart">Back to cart</a></p>
+</form>
+{% endblock %}

@@ -1,0 +1,26 @@
+{# Checkout's frame: the steps, the form on the left and the order summary on the right. #}
+{% extends "base.html" %}
+{% block main %}
+<h1>Checkout</h1>
+<ol class="steps" aria-label="Checkout steps">
+  {% for n, label in [(1, "Delivery"), (2, "Payment"), (3, "Review")] %}
+    <li class="{% if n < step %}done{% elif n == step %}current{% endif %}"{% if n == step %} aria-current="step"{% endif %}>{{ n }}. {{ label }}</li>
+  {% endfor %}
+</ol>
+<div class="checkout">
+  <div class="checkout-main">{% block step %}{% endblock %}</div>
+  <aside class="summary" aria-labelledby="summary-heading">
+    <h2 id="summary-heading">Your order</h2>
+    <ul class="summary-lines">
+      {% for line in session.cart %}
+        <li><span>{{ line.describe() }} × {{ line.quantity }}</span><span>{{ money(line.total) }}</span></li>
+      {% endfor %}
+    </ul>
+    <dl>
+      <div><dt>Subtotal</dt><dd>{{ money(subtotal) }}</dd></div>
+      <div><dt>Delivery</dt><dd>{% if delivery_cost %}{{ money(delivery_cost) }}{% else %}Free{% endif %}</dd></div>
+      <div class="total"><dt>Total</dt><dd>{{ money(total) }}</dd></div>
+    </dl>
+  </aside>
+</div>
+{% endblock %}

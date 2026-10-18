@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Your cart · Larkspur Market{% endblock %}
+{% block main %}
+<h1>Your cart</h1>
+
+{% if removed %}<p class="notice" role="status">Removed {{ removed }} from your cart.</p>{% endif %}
+
+{% if session.cart %}
+  <div class="cart">
+    <table class="lines">
+      <caption class="visually-hidden">Items in your cart</caption>
+      <thead><tr><th scope="col">Item</th><th scope="col">Price</th><th scope="col">Quantity</th><th scope="col">Total</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+      <tbody>
+        {% for line in session.cart %}
+          <tr>
+            <td class="item">
+              <img src="/img/{{ line.slug }}/{{ colour_slug(line.colour) }}.svg" alt="" width="64" height="64">
+              <div><a href="/p/{{ line.slug }}?colour={{ colour_slug(line.colour) }}">{{ line.product.name }}</a>
+                <p class="hint">{{ line.colour }}{% if line.size %} · Size {{ line.size }}{% endif %}</p></div>
+            </td>
+            <td>{{ money(line.product.price) }}</td>
+            <td>
+              <form action="/cart/update" method="post" class="inline">
+                <input type="hidden" name="line" value="{{ line.id }}">
+                <label for="qty-{{ line.id }}" class="visually-hidden">Quantity of {{ line.describe() }}</label>
+                <select id="qty-{{ line.id }}" name="quantity">
+                  {% for n in range(1, 11) %}<option value="{{ n }}"{% if n == line.quantity %} selected{% endif %}>{{ n }}</option>{% endfor %}
+                </select>
+                <button type="submit" aria-label="Update quantity of {{ line.describe() }}">Update</button>
+              </form>
+            </td>
+            <td>{{ money(line.total) }}</td>
+            <td>
+              <form action="/cart/remove" method="post">
+                <input type="hidden" name="line" value="{{ line.id }}">
+                <button type="submit" class="link" aria-label="Remove {{ line.describe() }}">Remove</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <aside class="summary" aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Order summary</h2>
+      <dl>
+        <div><dt>Subtotal ({{ session.items() }} item{{ 's' if session.items() != 1 }})</dt><dd>{{ money(session.subtotal()) }}</dd></div>
+        <div><dt>Delivery</dt><dd>{% if session.subtotal() >= free_from %}Free{% else %}From {{ money(standard) }}{% endif %}</dd></div>
+      </dl>
+      {% if session.subtotal() < free_from %}
+        <p class="hint">Add {{ money(free_from - session.subtotal()) }} more for free delivery.</p>
+      {% else %}
+        <p class="hint">Your order qualifies for free delivery.</p>
+      {% endif %}
+      <a class="button primary big" href="/checkout">Proceed to checkout</a>
+      <p><a href="/">Continue shopping</a></p>
+    </aside>
+  </div>
+{% else %}
+  <div class="empty">
+    <p>Your cart is empty.</p>
+    <p><a class="button primary" href="/c/clothing">Start shopping</a></p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,65 @@
+# Buying a t-shirt at Larkspur Market, the test shop that comes with demogen. Start it first:
+#
+#   demogen shop
+#
+# Or skip this file and let the playbook be drafted from a prompt:
+#
+#   demogen run --url http://127.0.0.1:8400 --prompt "Search for a navy t-shirt, open the Crewneck
+#     T-Shirt, choose size L, add it to the cart, and check out as a guest with the test card."
+version: 1
+name: Buying a t-shirt at Larkspur Market
+target:
+  base_url: http://127.0.0.1:8400
+setup:
+  # Every cart and order back to a fresh start, so rehearsal and the take see the same shop.
+  seed: curl -fsS -X POST http://127.0.0.1:8400/__reset
+intent:
+  audience: People shopping online for the first time
+  tone: Friendly and matter-of-fact
+  key_messages:
+    - Search takes you straight to what you want
+    - You pick the exact colour and size before anything goes in the cart
+    - Checkout is three short steps, with nothing hidden
+  cta: Find something you like and try the checkout yourself.
+steps:
+  - id: search
+    do: Search for "navy t-shirt"
+    expect: The matching t-shirts are listed, shown in navy
+    say_hint: Start with a search
+    dwell: 2s
+  - id: open-product
+    do: Open the Crewneck T-Shirt from the results
+    expect: The product page shows the shirt in navy, with its price and sizes
+    say_hint: Each product has its own page with every option
+    dwell: 2.5s
+  - id: choose-size
+    do: Choose the size L
+    expect: L is selected
+    say_hint: Pick your size
+    dwell: 1.5s
+  - id: add-to-cart
+    do: Add the shirt to the cart
+    expect: A message confirms the navy shirt in size L was added
+    say_hint: One click, and nothing is charged yet
+    dwell: 2.5s
+  - id: delivery
+    do: Check out, and enter the delivery details for Sam Rivera, sam@example.com, 4 Elm Street, Springfield, 62701, then continue to payment
+    data:
+      email: sam@example.com
+      name: Sam Rivera
+      address: 4 Elm Street
+      city: Springfield
+      postcode: "62701"
+    expect: The payment page is shown
+    say_hint: Delivery details take a few seconds
+    dwell: 1.5s
+  - id: pay
+    do: Pay with the test card 4242 4242 4242 4242, expiry 12/39, security code 123, and review the order
+    expect: The review page shows the card ending 4242
+    say_hint: Your card details, then one last look
+    dwell: 2s
+  - id: place-order
+    do: Place the order
+    expect: A thank-you message with the order number 1001
+    say_hint: And it's ordered
+    dwell: 3s

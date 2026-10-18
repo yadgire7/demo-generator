@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} · Larkspur Market{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="/c/{{ product.category }}">{{ categories[product.category][0] }}</a> › <span>{{ product.name }}</span></nav>
+
+{% if added %}
+  <div class="added" role="status">
+    <p><strong>Added to your cart:</strong> {{ added.describe() }}, quantity {{ added.quantity }}.</p>
+    <p><a class="button" href="/cart">View cart ({{ session.items() }})</a> <a class="button primary" href="/checkout">Check out</a></p>
+  </div>
+{% endif %}
+
+<div class="product">
+  <div class="product-picture">
+    <img id="product-image" src="/img/{{ product.slug }}/{{ colour_slug(chosen_colour) }}.svg" alt="{{ product.name }} in {{ chosen_colour }}" width="400" height="400" data-slug="{{ product.slug }}">
+  </div>
+
+  <div class="product-info">
+    <h1>{{ product.name }}</h1>
+    <p class="rating"><span class="stars" aria-hidden="true">{{ '★' * (product.rating|round|int) }}{{ '☆' * (5 - product.rating|round|int) }}</span> {{ product.rating }} out of 5 · <a href="#reviews">{{ product.review_count }} reviews</a></p>
+    <p class="price">{{ money(product.price) }}</p>
+    <p>{{ product.description }}</p>
+
+    {% if errors %}
+      <div class="error-summary" role="alert">
+        <h2>There is a problem</h2>
+        <ul>{% for message in errors.values() %}<li>{{ message }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <form action="/cart/add" method="post" class="buy">
+      <input type="hidden" name="slug" value="{{ product.slug }}">
+      <fieldset class="options">
+        <legend>Colour: <span id="colour-name">{{ chosen_colour }}</span></legend>
+        {% for colour in product.colours %}
+          <label class="pill"><input type="radio" name="colour" value="{{ colour }}"{% if colour == chosen_colour %} checked{% endif %}><span class="swatch" style="background: {{ colours[colour] }}" aria-hidden="true"></span>{{ colour }}</label>
+        {% endfor %}
+      </fieldset>
+
+      {% if product.sizes %}
+      <fieldset class="options{% if errors.size %} invalid{% endif %}"{% if errors.size %} aria-describedby="size-error"{% endif %}>
+        <legend>Size</legend>
+        {% if errors.size %}<p class="field-error" id="size-error">{{ errors.size }}</p>{% endif %}
+        {% for size in product.sizes %}
+          {% set available = product.size_available(size) %}
+          <label class="pill size" title="{{ size_names[size] }}"><input type="radio" name="size" value="{{ size }}"{% if size == chosen_size and available %} checked{% endif %}{% if not available %} disabled aria-label="{{ size }}, sold out"{% endif %}>{{ size }}</label>
+        {% endfor %}
+        <p class="hint"><a href="#size-guide">Size guide</a>{% if product.sold_out %} · Crossed-out sizes are sold out{% endif %}</p>
+      </fieldset>
+      {% endif %}
+
+      <div class="quantity">
+        <label for="quantity">Quantity</label>
+        <select id="quantity" name="quantity">
+          {% for n in range(1, 6) %}<option value="{{ n }}"{% if n == quantity %} selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+
+      {% if product.in_stock %}
+        <p class="stock">{% if product.stock < 5 %}<strong>Only {{ product.stock }} left</strong>, order soon{% else %}In stock, ready to ship{% endif %}</p>
+        <button type="submit" class="primary big">Add to cart</button>
+      {% else %}
+        <p class="stock sold-out"><strong>Sold out.</strong> Check back soon.</p>
+        <button type="submit" class="primary big" disabled>Add to cart</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+{% if product.sizes %}
+<section id="size-guide" class="size-guide" aria-labelledby="size-guide-heading">
+  <h2 id="size-guide-heading">Size guide</h2>
+  <table>
+    <caption class="visually-hidden">Chest measurements by size</caption>
+    <thead><tr><th scope="col">Size</th><th scope="col">Chest (inches)</th></tr></thead>
+    <tbody>
+      {% for size, chest in [("XS", "32–34"), ("S", "35–37"), ("M", "38–40"), ("L", "41–43"), ("XL", "44–46")] if size in product.sizes %}
+        <tr><th scope="row">{{ size_names[size] }} ({{ size }})</th><td>{{ chest }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section id="reviews" class="reviews" aria-labelledby="reviews-heading">
+  <h2 id="reviews-heading">Customer reviews</h2>
+  <p>{{ product.rating }} out of 5, from {{ product.review_count }} reviews.</p>
+  <ul>
+    {% for who, stars, headline, body in product.reviews %}
+      <li><p><strong>{{ headline }}</strong> <span class="stars" aria-label="{{ stars }} out of 5 stars">{{ '★' * stars }}{{ '☆' * (5 - stars) }}</span></p><p>{{ body }}</p><p class="hint">{{ who }}</p></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

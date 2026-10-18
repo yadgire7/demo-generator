@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Your account · Larkspur Market{% endblock %}
+{% block main %}
+<h1>Your account</h1>
+<p class="lead">Signed in as {{ session.account.name }} ({{ session.user }}).</p>
+{% if saved == 'address' %}<p class="notice" role="status">Address saved.</p>{% elif saved == 'removed' %}<p class="notice" role="status">Address removed.</p>{% endif %}
+
+<section aria-labelledby="orders-heading">
+  <h2 id="orders-heading">Your orders</h2>
+  <table class="lines">
+    <caption class="visually-hidden">Your orders, newest first</caption>
+    <thead><tr><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead>
+    <tbody>
+      {% for order in session.order_history() %}
+        <tr><td><a href="/orders/{{ order.number }}">Order {{ order.number }}</a></td><td>{{ order.date }}</td><td>{{ order.status }}</td><td>{{ money(order_total(order)) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="addresses-heading">
+  <h2 id="addresses-heading">Saved addresses</h2>
+  {% set addresses = session.saved_addresses() %}
+  {% if addresses %}
+    <ul class="addresses">
+      {% for address in addresses %}
+        <li>
+          <p>{{ address.name }}<br>{{ address.line1 }}{% if address.line2 %}<br>{{ address.line2 }}{% endif %}<br>{{ address.city }} {{ address.postcode }}<br>{{ address.country }}</p>
+          <form action="/account/addresses/remove" method="post">
+            <input type="hidden" name="index" value="{{ loop.index0 }}">
+            <button type="submit" class="link" aria-label="Remove the address at {{ address.line1 }}">Remove</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No saved addresses.</p>
+  {% endif %}
+
+  <details class="add-address"{% if errors %} open{% endif %}>
+    <summary>Add an address</summary>
+    {% include "_errors.html" %}
+    <form action="/account/addresses" method="post" class="stack-form" novalidate>
+      {% with key="name", label="Full name", autocomplete="name" %}{% include "_field.html" %}{% endwith %}
+      {% with key="line1", label="Address line 1", autocomplete="address-line1" %}{% include "_field.html" %}{% endwith %}
+      {% with key="line2", label="Address line 2", autocomplete="address-line2", optional=True %}{% include "_field.html" %}{% endwith %}
+      <div class="row">
+        {% with key="city", label="Town or city", autocomplete="address-level2" %}{% include "_field.html" %}{% endwith %}
+        {% with key="postcode", label="Postcode or ZIP code", autocomplete="postal-code" %}{% include "_field.html" %}{% endwith %}
+      </div>
+      <div class="field">
+        <label for="country">Country</label>
+        <select id="country" name="country">{% for country in countries %}<option{% if form.get('country', 'United States') == country %} selected{% endif %}>{{ country }}</option>{% endfor %}</select>
+      </div>
+      <button type="submit" class="primary">Save address</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order.number }} · Larkspur Market{% endblock %}
+{% block main %}
+{% if placed %}
+  <div class="confirmation" role="status">
+    <h1>Thank you, your order is placed</h1>
+    <p>Order number <strong>{{ order.number }}</strong>. A confirmation is on its way to {{ order.email }}.</p>
+  </div>
+{% else %}
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › {% if session.user %}<a href="/account">Your account</a> › {% endif %}<span>Order {{ order.number }}</span></nav>
+  <h1>Order {{ order.number }}</h1>
+{% endif %}
+
+<dl class="review">
+  <div><dt>Placed</dt><dd>{{ order.date }}</dd></div>
+  <div><dt>Status</dt><dd>{{ order.status }}</dd></div>
+  <div><dt>Deliver to</dt><dd>{{ order.address.name }}, {{ order.address.line1 }}, {{ order.address.city }} {{ order.address.postcode }}, {{ order.address.country }}</dd></div>
+  <div><dt>Delivery</dt><dd>{{ delivery[order.delivery][0] }}</dd></div>
+  <div><dt>Paid with</dt><dd>Card ending {{ order.card_last4 }}</dd></div>
+</dl>
+
+<table class="lines">
+  <caption>Items in order {{ order.number }}</caption>
+  <thead><tr><th scope="col">Item</th><th scope="col">Quantity</th><th scope="col">Total</th></tr></thead>
+  <tbody>
+    {% for line in order.lines %}
+      <tr><td>{{ line.name }}, {{ line.colour }}{% if line.size %}, size {{ line.size }}{% endif %}</td><td>{{ line.quantity }}</td><td>{{ money(line.price * line.quantity) }}</td></tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th scope="row" colspan="2">Delivery</th><td>{% if order.delivery_cost %}{{ money(order.delivery_cost) }}{% else %}Free{% endif %}</td></tr>
+    <tr><th scope="row" colspan="2">Total</th><td>{{ money(order_total(order)) }}</td></tr>
+  </tfoot>
+</table>
+<p><a class="button" href="/">Continue shopping</a>{% if session.user %} <a href="/account">See all your orders</a>{% endif %}</p>
+{% endblock %}

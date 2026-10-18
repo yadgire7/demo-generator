@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="hero">
+  <h1>Good things for every day</h1>
+  <p>Clothing, homeware and accessories, made to last. Free delivery on orders over {{ money(5000) }}.</p>
+  <a class="button primary" href="/c/clothing">Shop clothing</a>
+</section>
+
+<section aria-labelledby="departments-heading">
+  <h2 id="departments-heading">Shop by department</h2>
+  <ul class="departments-grid">
+    {% for slug, (name, blurb) in categories.items() %}
+      <li><a class="department" href="/c/{{ slug }}"><strong>{{ name }}</strong><span>{{ blurb }}</span></a></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section aria-labelledby="featured-heading">
+  <h2 id="featured-heading">Customer favourites</h2>
+  <ul class="grid">
+    {% for product in featured %}{% include "_card.html" %}{% endfor %}
+  </ul>
+</section>
+{% endblock %}

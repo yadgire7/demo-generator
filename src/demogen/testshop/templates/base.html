@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Larkspur Market{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b3a6e'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='Georgia'%3EL%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/shop.css">
+  <script src="/static/shop.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to main content</a>
+  <header class="site-header">
+    <div class="bar">
+      <a class="logo" href="/">Larkspur Market</a>
+      <form class="search" role="search" action="/search" method="get">
+        <input type="search" name="q" aria-label="Search products" placeholder="Search tees, mugs, bags…" value="{{ query or '' }}">
+        <button type="submit">Search</button>
+      </form>
+      <nav class="account" aria-label="Your account">
+        {% if session.user %}
+          <a href="/account">Hi, {{ session.account.name.split()[0] }}</a>
+          <form action="/signout" method="post"><button class="link" type="submit">Sign out</button></form>
+        {% else %}
+          <a href="/signin?next={{ path }}">Sign in</a>
+        {% endif %}
+        <a class="cart-link" href="/cart">Cart ({{ session.items() }})</a>
+      </nav>
+    </div>
+    <nav class="departments" aria-label="Departments">
+      {% for slug, (name, _) in categories.items() %}
+        <a href="/c/{{ slug }}"{% if path == '/c/' ~ slug %} aria-current="page"{% endif %}>{{ name }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main id="main">
+    {% block main %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <p>Larkspur Market is a test shop for demogen. Nothing here is for sale and no payment is ever taken.</p>
+  </footer>
+</body>
+</html>
