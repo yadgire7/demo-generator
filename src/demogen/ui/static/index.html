@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>demogen</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233456d1'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true">▶</span>demogen</a>
+    <a class="top-new" href="#/new">New demo</a>
+  </header>
+  <main id="main" tabindex="-1">
+    <noscript><p>demogen needs JavaScript to show your demos.</p></noscript>
+  </main>
+  <div id="live" class="visually-hidden" aria-live="polite"></div>
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="actions">
+        <button value="cancel" class="secondary">Cancel</button>
+        <button value="ok" class="danger" id="confirm-ok">Delete</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -168,7 +168,7 @@ def test_steps_for_one_run_are_taken_one_at_a_time(deployment, playbook):
 @pytest.fixture
 def client(deployment):
     api, _ = deployment()
-    return TestClient(create_api(api), headers={"Authorization": f"Bearer {TOKEN}"})
+    return TestClient(create_api(api, token=TOKEN), headers={"Authorization": f"Bearer {TOKEN}"})
 
 
 def _wait_http(client: TestClient, run_id: str, phase: str) -> dict:
@@ -313,7 +313,7 @@ def test_api_drafts_a_playbook_from_a_prompt_and_takes_feedback(deployment, scri
     draft = {"name": "Todos", "base_url": "https://demo.playwright.dev/todomvc", "audience": "developers", "tone": "brisk", "key_messages": [], "cta": "", "steps": [step]}
     scripted_llm.replies = [draft, {**draft, "steps": [step, {**step, "id": "tick", "do": "Tick it off"}]}]
     api, _ = deployment()
-    client = TestClient(create_api(api), headers={"Authorization": f"Bearer {TOKEN}"})
+    client = TestClient(create_api(api, token=TOKEN), headers={"Authorization": f"Bearer {TOKEN}"})
 
     started = client.post("/runs", data={"prompt": "Show adding a todo in TodoMVC.", "run_id": "web3"}, files={"config": ("c.yaml", yaml.safe_dump(SCRIPTED).encode())})
     assert started.status_code == 202

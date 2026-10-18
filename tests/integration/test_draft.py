@@ -62,7 +62,7 @@ def test_run_from_a_prompt_pauses_on_the_draft_then_carries_on(harness, scripted
     scripted_llm.replies = [FIRST]
     h = harness()
     status = h.start(None, prompt=PROMPT, url=URL, **SCRIPTED)
-    assert status.phase == "awaiting_approval" and status.awaiting == {"kind": "playbook", "artifact": status.state["playbook_src"]}
+    assert status.phase == "awaiting_approval" and status.awaiting == {"kind": "playbook", "artifact": status.state["playbook_src"], "failure": None}
     assert h.path("r1", "prompt.md").read_text() == PROMPT
     assert [s.id for s in parse_playbook(h.path("r1", "playbook.yaml").read_text()).steps] == ["add", "tick"]
     assert h.calls["load_validate"] == 0  # nothing downstream runs on an unapproved draft
@@ -159,3 +159,26 @@ def test_command_line_from_prompt_to_feedback_to_approval(scripted_llm, tmp_path
 
     neither = runner.invoke(app, ["run", "--run-id", "p2", *runs])
     assert neither.exit_code == 1 and "either a playbook or a prompt" in neither.output
+
+
+def test_a_drafted_step_rehearsal_cannot_do_can_be_sent_back_with_feedback(harness, scripted_llm):
+    from tests.conftest import FAKES
+
+    attempts = iter([{"step_id": "tick", "reason": "the list has no checkboxes"}, None])
+
+    def rehearse(ctx, inputs):
+        outcome = FAKES["browser"]["rehearse"](ctx, inputs)
+        failure = next(attempts)
+        return {"plan": None, "rehearsal_failure": failure} if failure else outcome
+
+    scripted_llm.replies = [FIRST, _draft(("add", "Add a todo called Ship it"))]
+    h = harness({"rehearse": rehearse})
+    h.start(None, prompt=PROMPT, **SCRIPTED)
+    status = h.runtime.approve("r1")  # the draft goes to rehearsal, which fails on "tick"
+    assert status.awaiting["kind"] == "playbook" and status.awaiting["failure"]["step_id"] == "tick"
+
+    status = h.runtime.approve("r1", feedback="Leave out the ticking.")
+    assert status.awaiting["kind"] == "playbook" and status.awaiting["failure"] is None  # a fresh draft, nothing failed yet
+    assert "Leave out the ticking." in scripted_llm.transcript[1]
+    assert h.runtime.approve("r1").awaiting["kind"] == "plan"
+    assert h.calls["rehearse"] == 2

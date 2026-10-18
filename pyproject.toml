@@ -20,6 +20,11 @@ dependencies = [
   "pydantic>=2.9",
   "pyyaml>=6",
   "typer>=0.15",
+  # The app (demogen ui) and the test shop (demogen shop).
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "python-multipart>=0.0.9",
+  "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -30,9 +35,6 @@ service = [
   "psycopg[binary,pool]>=3.2",
   "langgraph-checkpoint-postgres>=3",
   "boto3>=1.35",
-  "fastapi>=0.115",
-  "uvicorn>=0.30",
-  "python-multipart>=0.0.9",
 ]
 # Tracing: the SDK and an OTLP exporter. Without it, tracing calls are no-ops.
 otel = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp-proto-http>=1.27"]

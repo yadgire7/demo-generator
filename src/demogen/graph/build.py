@@ -32,6 +32,8 @@ class RunState(TypedDict, total=False):
     target_url: str | None
     playbook_feedback: str | None  # the author's requested changes to the drafted playbook
     draft_round: int
+    rehearsal_failure: dict[str, str] | None  # the step rehearsal could not do, and why
+    rehearsal_attempt: int
     playbook_src: ArtifactRef
     intent_src: ArtifactRef | None
     playbook: ArtifactRef
@@ -59,7 +61,8 @@ WIRING: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "draft_playbook": (("prompt_src", "target_url", "playbook_src", "playbook_feedback", "draft_round"), ("playbook_src",)),
     "load_validate": (("playbook_src", "intent_src"), ("playbook", "intent")),
     "setup": (("playbook",), ("auth_state",)),
-    "rehearse": (("playbook", "auth_state"), ("plan",)),
+    # `rehearsal_attempt` lets an unchanged playbook be rehearsed again after a failure, not answered from cache.
+    "rehearse": (("playbook", "auth_state", "rehearsal_attempt"), ("plan", "rehearsal_failure")),
     "record_take": (("playbook", "plan", "auth_state"), ("events", "video", "plan")),
     "verify_take": (("playbook", "events"), ("windows",)),
     "extract_keyframes": (("video", "events", "windows"), ("keyframes",)),
@@ -110,16 +113,25 @@ def build_graph(executor: StageExecutor, ctx_for: Callable[[str], StageContext])
 
     def draft_playbook(state: RunState) -> dict[str, Any]:
         update = stage_node("draft_playbook")(state)
-        update["playbook_feedback"] = None  # acted on; the new draft goes back to the author
+        # The feedback is acted on, and a failure seen in rehearsal belonged to the old draft.
+        update.update(playbook_feedback=None, rehearsal_failure=None)
         return update
 
     def approve_playbook(state: RunState) -> dict[str, Any]:
-        if ctx_for(state["run_id"]).config.auto_approve:
+        failure = state.get("rehearsal_failure")
+        # A failed rehearsal needs a person even when approvals are otherwise skipped.
+        if ctx_for(state["run_id"]).config.auto_approve and not failure:
             return {}
-        decision = interrupt({"kind": "playbook", "artifact": state["playbook_src"]})
+        decision = interrupt({"kind": "playbook", "artifact": state["playbook_src"], "failure": failure})
         if decision.get("feedback"):
             return {"playbook_feedback": decision["feedback"], "draft_round": state.get("draft_round", 0) + 1}
-        return {"playbook_src": decision["artifact"]} if decision.get("artifact") else {}
+        update: dict[str, Any] = {"playbook_src": decision["artifact"]} if decision.get("artifact") else {}
+        if failure:
+            update.update(rehearsal_failure=None, rehearsal_attempt=state.get("rehearsal_attempt", 0) + 1)
+        return update
+
+    def after_rehearsal(state: RunState) -> str:
+        return PLAYBOOK_APPROVAL if state.get("rehearsal_failure") else "approve_plan"
 
     def write_story(state: RunState) -> dict[str, Any]:
         update = stage_node("write_story")(state)
@@ -158,9 +170,11 @@ def build_graph(executor: StageExecutor, ctx_for: Callable[[str], StageContext])
     graph.add_conditional_edges(
         PLAYBOOK_APPROVAL, lambda state: "draft_playbook" if state.get("playbook_feedback") else "load_validate", ["draft_playbook", "load_validate"]
     )
+    for source, target in [("load_validate", "setup"), ("setup", "rehearse")]:
+        graph.add_edge(source, target)
+    graph.add_conditional_edges("rehearse", after_rehearsal, [PLAYBOOK_APPROVAL, "approve_plan"])
     spine = [
-        "load_validate", "setup", "rehearse", "approve_plan", "record_take", "verify_take",
-        "extract_keyframes", "analyze_frames", "write_story", "approve_story",
+        "approve_plan", "record_take", "verify_take", "extract_keyframes", "analyze_frames", "write_story", "approve_story",
     ]  # fmt: skip
     for source, target in zip(spine, spine[1:]):
         graph.add_edge(source, target)

@@ -12,7 +12,7 @@ from playwright.sync_api import Error as PlaywrightError
 from demogen.driver.lockfile import ResolvedStep
 from demogen.driver.playwright.session import ActionFailed, BrowserSession
 from demogen.llm.agent_loop import Stop, ToolError, run_tool_loop
-from demogen.llm.base import LLMProvider, tool
+from demogen.llm.base import LLMError, LLMProvider, ToolCall, tool
 from demogen.playbook.actions import Action
 from demogen.playbook.secrets import Redactor
 
@@ -49,6 +49,10 @@ hover, such as a menu. If an action does not take you where the step needs, look
 Text of the form ${secret:NAME} is a placeholder for a credential. Pass it to `fill` exactly \
 as written; the real value is substituted outside your view.
 
+Prefer elements with a visible name (a labelled button, a product's title link) over unnamed \
+ones such as a bare picture or icon: the recording finds elements again by name, and an unnamed \
+one may not be found on a later visit.
+
 When the outcome the step expects is visible on the page, call step_done with one to three \
 short pieces of text, copied exactly from the current snapshot, that show the step worked. \
 They are checked on every replay, so choose text that this step causes to appear. If the \
@@ -77,12 +81,31 @@ class StepUnresolved(Exception):
     """The model reported that the step cannot be done."""
 
 
-class _Rehearsal:
-    """Tool handlers for one step. Each successful action is appended to `actions`."""
+FRAGILE = (
+    "That element has no accessible name, so the recording could only find it again by its place "
+    "in the page, which often changes from one visit to the next. If an element with a visible name "
+    "does the same thing (a title link, a labelled button), use that instead. If there is none, "
+    "repeat the same action to use this element anyway."
+)
 
-    def __init__(self, session: BrowserSession):
+
+class _Rehearsal:
+    """Tool handlers for one step. Each successful action is appended to `actions`.
+
+    `journal`, if given, is told about actions that changed nothing; failed calls reach it
+    through the tool loop.
+    """
+
+    def __init__(self, session: BrowserSession, journal: Any = None):
         self.session = session
+        self.journal = journal
         self.actions: list[Action] = []
+        self._warned: set[str] = set()  # unnamed elements the model was warned about, by CSS path
+
+    def _no_effect(self, message: str, action: Action, call: str) -> str:
+        if self.journal is not None:
+            self.journal.note(self.session, "no_effect", message, action=action, tool_call={"name": call, "arguments": {}})
+        return message
 
     def _page_state(self) -> str:
         """What the page shows, ignoring what changes without it changing."""
@@ -92,16 +115,21 @@ class _Rehearsal:
             return ""  # the page is mid-navigation: something is certainly changing
 
     def _on_element(self, kind: str, ref: str, text: str | None = None) -> str:
+        action = None
         try:
             element = self.session.by_ref(ref)
             target, label = self.session.durable_locators(ref, element)
             action = Action(type=kind, target=target, label=label, text=text)
+            if target[0].by == "css" and target[0].selector not in self._warned:
+                # No name to find it by: ask once for a named element that does the same.
+                self._warned.add(target[0].selector)
+                raise ToolError(FRAGILE, kind="fragile_target", action=action)
             before = self._page_state() if kind == "hover" else None
             self.session.perform(action, element)
         except ActionFailed as error:
-            raise ToolError(str(error)) from error
+            raise ToolError(str(error), kind=error.kind, action=action) from error
         if before is not None and not self._changed_since(before):
-            return "Hovering there changed nothing on the page, so it is not part of the recording."
+            return self._no_effect("Hovering there changed nothing on the page, so it is not part of the recording.", action, "hover")
         self.actions.append(action)
         return "ok"
 
@@ -117,7 +145,7 @@ class _Rehearsal:
         try:
             self.session.perform(action)
         except ActionFailed as error:
-            raise ToolError(str(error)) from error
+            raise ToolError(str(error), kind=error.kind, action=action) from error
         self.actions.append(action)
         return "ok"
 
@@ -138,7 +166,7 @@ class _Rehearsal:
 
     def goto(self, url: str) -> str:
         if urljoin(self.session.target.base_url, url) == self.session.page.url:
-            return "The page is already at that address, so nothing was done or recorded."
+            return self._no_effect("The page is already at that address, so nothing was done or recorded.", Action(type="goto", url=url), "goto")
         return self._on_page(Action(type="goto", url=url))
 
     def wait(self, seconds: float) -> str:
@@ -150,7 +178,7 @@ class _Rehearsal:
             raise ToolError("give one to three pieces of evidence")
         missing = [text for text in evidence if not self._visible(text)]
         if missing:
-            raise ToolError(f"not visible on the page as written: {missing}. Copy text exactly from the snapshot.")
+            raise ToolError(f"not visible on the page as written: {missing}. Copy text exactly from the snapshot.", kind="evidence_not_visible")
         return Stop(evidence)
 
     def step_failed(self, reason: str) -> str:
@@ -173,12 +201,26 @@ def resolve_step(
     expect: str | None = None,
     data: dict[str, Any] | None = None,
     done: list[str] = (),
+    journal: Any = None,
 ) -> ResolvedStep:
-    """Have the model perform one step on the session's current page. Raises `StepUnresolved`."""
+    """Have the model perform one step on the session's current page. Raises `StepUnresolved`.
+
+    `journal` (a `failures.StepJournal`), if given, keeps each of the model's mistakes on the way,
+    with what it was looking at when it made it, and learns at the end whether the step was done.
+    """
+    seen = {"page": ""}  # the page as the model last saw it
 
     def observe() -> str:
         session.page.wait_for_timeout(SETTLE_MS)
-        return f"Page now ({session.page.url}):\n{redactor.redact(session.snapshot())}"
+        seen["page"] = f"Page now ({session.page.url}):\n{redactor.redact(session.snapshot())}"
+        return seen["page"]
+
+    def on_error(call: ToolCall, error: ToolError) -> None:
+        if journal is not None:
+            journal.note(
+                session, error.kind, str(error),
+                action=error.details.get("action"), tool_call={"name": call.name, "arguments": call.arguments}, observation=seen["page"],
+            )  # fmt: skip
 
     brief = [f"Step: {step_id}", f"Do: {do}"]
     if data:
@@ -188,10 +230,24 @@ def resolve_step(
         brief.append("Already done earlier in this demo:\n" + "\n".join(f"- {item}" for item in done))
     brief.append(observe())
 
-    rehearsal = _Rehearsal(session)
+    rehearsal = _Rehearsal(session, journal)
     handlers = {spec["function"]["name"]: getattr(rehearsal, spec["function"]["name"]) for spec in TOOLS}
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": "\n\n".join(brief)}]
-    evidence = run_tool_loop(llm, messages, TOOLS, handlers, max_turns=MAX_TURNS, observe=observe)
+    try:
+        evidence = run_tool_loop(llm, messages, TOOLS, handlers, max_turns=MAX_TURNS, observe=observe, on_error=on_error)
+    except StepUnresolved as error:
+        if journal is not None:
+            journal.note(session, "step_unresolved", str(error), tool_call={"name": "step_failed", "arguments": {"reason": str(error)}}, observation=seen["page"])
+            journal.close("unresolved")
+        raise
+    except LLMError as error:
+        if journal is not None:
+            if "did not finish" in str(error):
+                journal.note(session, "turn_limit", str(error), observation=seen["page"])
+            journal.close("unresolved")
+        raise
+    if journal is not None:
+        journal.close("resolved")
     return ResolvedStep(
         step_id=step_id,
         source="llm",

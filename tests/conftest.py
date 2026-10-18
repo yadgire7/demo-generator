@@ -45,7 +45,7 @@ def fake_setup(ctx, inputs):
 def fake_rehearse(ctx, inputs):
     playbook = ctx.store.get_json(inputs["playbook"])
     plan = Plan(steps=[ResolvedStep(step_id=step["id"], source="stub") for step in playbook["steps"]])
-    return {"plan": ctx.store.put_json("actions.lock.json", plan.model_dump(mode="json"))}
+    return {"plan": ctx.store.put_json("actions.lock.json", plan.model_dump(mode="json")), "rehearsal_failure": None}
 
 
 def fake_record_take(ctx, inputs):

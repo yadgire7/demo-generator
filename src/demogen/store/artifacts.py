@@ -31,6 +31,7 @@ class ArtifactStore(Protocol):
     def verify(self, ref: ArtifactRef) -> bool: ...
     def sha256(self, path: str) -> str: ...
     def delete_prefix(self, prefix: str) -> None: ...
+    def list_prefix(self, prefix: str) -> list[str]: ...
 
     def put_json(self, path: str, obj: Any) -> ArtifactRef:
         return self.put_bytes(path, json.dumps(obj, indent=2, sort_keys=True).encode())
@@ -81,3 +82,11 @@ class LocalArtifactStore(ArtifactStore):
 
     def delete_prefix(self, prefix: str) -> None:
         shutil.rmtree(self._resolve(prefix), ignore_errors=True)
+
+    def list_prefix(self, prefix: str) -> list[str]:
+        """The paths of every artifact under `prefix`, sorted."""
+        root = self.root.resolve()
+        base = self._resolve(prefix) if prefix else root
+        if not base.is_dir():
+            return []
+        return sorted(str(path.relative_to(root)) for path in base.rglob("*") if path.is_file())

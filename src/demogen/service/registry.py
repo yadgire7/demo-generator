@@ -47,6 +47,9 @@ class Registry:
     def recent(self, limit: int = 50) -> list[dict[str, Any]]:
         return self._execute("SELECT * FROM demogen_runs ORDER BY created_at DESC LIMIT %s", limit)
 
+    def delete(self, run_id: str) -> None:
+        self._execute("DELETE FROM demogen_runs WHERE run_id = %s", run_id)
+
     def set_error(self, run_id: str, error: str | None) -> None:
         self._execute("UPDATE demogen_runs SET error = %s WHERE run_id = %s", error, run_id)
 

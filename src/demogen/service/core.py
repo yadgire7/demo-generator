@@ -19,7 +19,7 @@ from demogen import telemetry
 from demogen.errors import DemogenError
 from demogen.exec.local import LocalExecutor
 from demogen.exec.queue import STAGE_TASK, QueueExecutor, error_path
-from demogen.graph.runtime import RunStatus, Runtime, Step
+from demogen.graph.runtime import RunError, RunStatus, Runtime, Step
 from demogen.service.registry import Registry
 from demogen.service.settings import Settings
 from demogen.stages import StageSpec
@@ -112,6 +112,21 @@ class Service:
             "error": error if phase == "failed" else None,
             "state": status.state,
         }
+
+    @property
+    def default_config(self):
+        return self.settings.default_config
+
+    def delete(self, run_id: str) -> None:
+        if self.busy(run_id):
+            raise RunError(f"run {run_id} is busy; wait for it to pause or finish before deleting it")
+        self.runtime.context(run_id)  # refuses an unknown run
+        self.runtime.forget(run_id)
+        self.runtime.stores.for_run(run_id).delete_prefix("")
+        self.runs.delete(run_id)
+
+    def reveal(self, run_id: str) -> None:
+        raise RunError("showing a run's folder only works in the local app")
 
     # What workers do.
 

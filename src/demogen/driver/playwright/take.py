@@ -30,10 +30,11 @@ SCROLL_SETTLE_POLLS = 30
 
 
 class StepFailed(Exception):
-    def __init__(self, step_id: str, reason: str):
+    def __init__(self, step_id: str, reason: str, kind: str = "action_failed"):
         super().__init__(f"step {step_id!r}: {reason}")
         self.step_id = step_id
         self.reason = reason
+        self.kind = kind
 
 
 class EventLog:
@@ -50,8 +51,21 @@ class EventLog:
         return "".join(json.dumps(event) + "\n" for event in self._events).encode()
 
 
-def run_take(session: BrowserSession, playbook: Playbook, plan: Plan, video: Path, *, fps: int, crf: int) -> EventLog:
-    """Record one take to `video`. Raises `StepFailed` (and discards the recording) if a step breaks."""
+def run_take(
+    session: BrowserSession,
+    playbook: Playbook,
+    plan: Plan,
+    video: Path,
+    *,
+    fps: int,
+    crf: int,
+    on_failure: Callable[[str, Action | None, ActionFailed], None] | None = None,
+) -> EventLog:
+    """Record one take to `video`. Raises `StepFailed` (and discards the recording) if a step breaks.
+
+    `on_failure` hears about a broken step first, while its page is still open: the step, the
+    action that failed (None if the actions ran but the page did not end up as expected), and why.
+    """
     page = session.page
     viewport = session.target.viewport
     session.open()
@@ -67,19 +81,24 @@ def run_take(session: BrowserSession, playbook: Playbook, plan: Plan, video: Pat
         dwell = {step.id: step.dwell for step in playbook.steps}
         for step in plan.steps:
             events.add("step_start", step_id=step.step_id)
+            current: Action | None = None
             try:
-                for action in step.actions:
-                    take.perform(action, step.step_id)
-                for text in step.expect_text:
-                    try:
-                        page.get_by_text(text).first.wait_for(state="visible", timeout=EXPECT_TIMEOUT_MS)
-                    except PlaywrightError:
-                        # The actions ran, but the page did not end up as it did in rehearsal.
-                        raise ActionFailed(f"the page did not show {text!r}, which it showed at this point in rehearsal") from None
+                try:
+                    for current in step.actions:
+                        take.perform(current, step.step_id)
+                    current = None
+                    for text in step.expect_text:
+                        try:
+                            page.get_by_text(text).first.wait_for(state="visible", timeout=EXPECT_TIMEOUT_MS)
+                        except PlaywrightError:
+                            # The actions ran, but the page did not end up as it did in rehearsal.
+                            raise ActionFailed(f"the page did not show {text!r}, which it showed at this point in rehearsal", kind="expectation_missed") from None
+                except PlaywrightError as error:
+                    raise ActionFailed(error.message.splitlines()[0]) from error
             except ActionFailed as error:
-                raise StepFailed(step.step_id, str(error)) from error
-            except PlaywrightError as error:
-                raise StepFailed(step.step_id, error.message.splitlines()[0]) from error
+                if on_failure is not None:
+                    on_failure(step.step_id, current, error)
+                raise StepFailed(step.step_id, str(error), error.kind) from error
             # From here to the step's end the screen is at rest, showing the step's result.
             events.add("settled", step_id=step.step_id)
             page.wait_for_timeout(max(dwell.get(step.step_id, 0), MIN_STEP_REST_S) * 1000)

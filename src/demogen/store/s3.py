@@ -81,6 +81,13 @@ class S3ArtifactStore(ArtifactStore):
             return False
         return True
 
+    def list_prefix(self, prefix: str) -> list[str]:
+        """The paths of every artifact under `prefix`, sorted."""
+        start = self.prefix + "/"
+        under = start + prefix.strip("/") + "/" if prefix.strip("/") else start
+        pages = self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=under)
+        return sorted(item["Key"].removeprefix(start) for page in pages for item in page.get("Contents", []))
+
     def delete_prefix(self, prefix: str) -> None:
         pages = self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=self._key(prefix).rstrip("/") + "/")
         for page in pages:

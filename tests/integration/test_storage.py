@@ -47,6 +47,17 @@ def test_s3_paths_cannot_leave_the_run_and_runs_do_not_see_each_other(minio_serv
     assert not other.exists("note.txt")
 
 
+def test_both_stores_list_what_is_under_a_folder(store, tmp_path):
+    from demogen.store.artifacts import LocalArtifactStore
+
+    for each in (store, LocalArtifactStore(tmp_path / "r1")):
+        for path in ("failures/b.json", "failures/a.png", "failures-old/c.json", "story.json"):
+            each.put_bytes(path, b"x")
+        assert each.list_prefix("failures") == ["failures/a.png", "failures/b.json"]
+        assert each.list_prefix("nothing") == []
+        assert len(each.list_prefix("")) == 4
+
+
 def test_stage_cache_works_over_s3_and_invalidates_by_stage(store):
     cache = StageCache(store)
     assert cache.get("write_story", "k") is None

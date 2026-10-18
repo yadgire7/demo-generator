@@ -21,6 +21,9 @@
 <ul id="list"></ul>
 <p id="count">0 left</p>
 <nav><a href="#all">All</a><a href="#active">Active</a></nav>
+<!-- A link with no name, in a block whose id is new on every load: like a product picture in search results. -->
+<div id="offer-slot"><a href="#all" data-offer><svg width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="10"/></svg></a></div>
+<p id="offer"></p>
 <div class="spacer"></div>
 <button id="archive">Archive all</button>
 <p id="status"></p>
@@ -57,6 +60,8 @@ document.getElementById('new').onsubmit = (e) => {
 };
 document.getElementById('archive').onclick = () => { tasks.length = 0; render(); document.getElementById('status').textContent = 'Everything archived'; };
 onhashchange = render;
+document.getElementById('offer-slot').id = crypto.randomUUID();
+document.querySelector('[data-offer]').onclick = () => { document.getElementById('offer').textContent = 'Offer opened'; };
 // Hovering Help shows its tooltip at once; hovering More opens its menu after a short delay.
 document.getElementById('help').onmouseenter = () => { document.getElementById('help-tip').hidden = false; };
 document.getElementById('more').onmouseenter = () => setTimeout(() => { document.getElementById('more-menu').hidden = false; }, 400);

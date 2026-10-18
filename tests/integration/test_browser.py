@@ -144,12 +144,49 @@ def test_pinned_action_that_fails_is_reported_not_replaced(harness, app_url, tmp
         h.start(_playbook(tmp_path, app_url, steps), auto_approve=True)
 
 
-def test_model_can_give_up_on_a_step(harness, scripted_llm, app_url, tmp_path):
+def test_a_step_rehearsal_cannot_do_sends_the_run_back_to_the_playbook(harness, scripted_llm, app_url, tmp_path):
+    scripted_llm.turns = [
+        [("fill", {"ref": Ref('textbox "New task"'), "text": "Ship it"}), ("click", {"ref": Ref('button "Add"')})],
+        [("step_done", {"evidence": ["Ship it"]})],
+        [("step_failed", {"reason": "there is no export button"})],
+    ]
+    steps = [{"id": "add", "do": "Add a task called Ship it"}, {"id": "export", "do": "Export the tasks to CSV"}]
+    h = harness(real="browser")
+    # Even with approvals switched off, a failed rehearsal waits for a person.
+    status = h.start(_playbook(tmp_path, app_url, steps), auto_approve=True, **SCRIPTED)
+    assert status.phase == "awaiting_approval" and status.awaiting["kind"] == "playbook"
+    assert status.awaiting["failure"] == {"step_id": "export", "reason": "there is no export button"}
+    assert h.calls["record_take"] == 0
+
+    # Approving it unchanged rehearses again (the site may have been having a bad moment)...
+    scripted_llm.turns = [
+        [("fill", {"ref": Ref('textbox "New task"'), "text": "Ship it"}), ("click", {"ref": Ref('button "Add"')})],
+        [("step_done", {"evidence": ["Ship it"]})],
+        [("step_failed", {"reason": "still no export button"})],
+    ]
+    status = h.runtime.approve("r1")
+    assert status.awaiting["failure"]["reason"] == "still no export button" and h.calls["rehearse"] == 2
+
+    # ...and an edited playbook without the impossible step goes through.
+    edited = yaml.safe_load(h.path("r1", "playbook.yaml").read_text())
+    edited["steps"] = edited["steps"][:1]
+    edit = tmp_path / "fixed.yaml"
+    edit.write_text(yaml.safe_dump(edited))
+    scripted_llm.turns = [
+        [("fill", {"ref": Ref('textbox "New task"'), "text": "Ship it"}), ("click", {"ref": Ref('button "Add"')})],
+        [("step_done", {"evidence": ["Ship it"]})],
+    ]
+    status = h.runtime.approve("r1", edit)
+    assert status.phase == "done" and h.calls["record_take"] == 1
+    assert [s["step_id"] for s in h.json("r1", "actions.lock.json")["steps"]] == ["add"]
+
+
+def test_a_failed_rehearsal_of_an_uploaded_playbook_takes_edits_not_feedback(harness, scripted_llm, app_url, tmp_path):
     scripted_llm.turns = [[("step_failed", {"reason": "there is no export button"})]]
     h = harness(real="browser")
-    steps = [{"id": "export", "do": "Export the tasks to CSV"}]
-    with pytest.raises(RunError, match="there is no export button"):
-        h.start(_playbook(tmp_path, app_url, steps), **SCRIPTED)
+    h.start(_playbook(tmp_path, app_url, [{"id": "export", "do": "Export the tasks to CSV"}]), **SCRIPTED)
+    with pytest.raises(RunError, match="started from a playbook file"):
+        h.runtime.approve("r1", feedback="Leave out the export.")
 
 
 def test_evidence_must_really_be_on_the_page(harness, scripted_llm, app_url, tmp_path):

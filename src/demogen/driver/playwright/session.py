@@ -22,13 +22,20 @@ FALLBACK_TIMEOUT_MS = 1000
 _SNAPSHOT_LINE = re.compile(r"""^\s*-\s+'?(?P<role>[a-z]+)(?:\s+"(?P<name>(?:[^"\\]|\\.)*)")?[^\n]*?\[ref=(?P<ref>\w+)\]""", re.M)
 
 # Shortest stable CSS path: stop at a unique test id or id, otherwise walk up by tag position.
-_CSS_PATH = """(el) => {
+# Ids a page generates afresh on every load (UUIDs, React's useId, long numbers or hashes) are no
+# anchor at all: a path through one finds nothing next time. They are passed over.
+_CSS_PATH = r"""(el) => {
   const unique = (sel) => document.querySelectorAll(sel).length === 1;
+  const generated = (value) =>
+    /[0-9a-f]{8}-[0-9a-f]{4}-/i.test(value) ||            // a UUID
+    /^[:«]r[0-9a-z]+[:»]$/i.test(value) ||                 // React's useId
+    /\d{4,}/.test(value) ||                                // a long number: ember1234, item-20261015
+    /(?=[0-9a-z]*\d)(?=[0-9a-z]*[a-z])[0-9a-z]{10,}/i.test(value);  // a hash of letters and digits
   const parts = [];
   for (let node = el; node && node.nodeType === 1 && node !== document.documentElement; node = node.parentElement) {
     const testId = node.getAttribute('data-testid');
-    if (testId && unique(`[data-testid=${JSON.stringify(testId)}]`)) { parts.unshift(`[data-testid=${JSON.stringify(testId)}]`); break; }
-    if (node.id && unique('#' + CSS.escape(node.id))) { parts.unshift('#' + CSS.escape(node.id)); break; }
+    if (testId && !generated(testId) && unique(`[data-testid=${JSON.stringify(testId)}]`)) { parts.unshift(`[data-testid=${JSON.stringify(testId)}]`); break; }
+    if (node.id && !generated(node.id) && unique('#' + CSS.escape(node.id))) { parts.unshift('#' + CSS.escape(node.id)); break; }
     const tag = node.tagName.toLowerCase();
     const twins = node.parentElement ? [...node.parentElement.children].filter((c) => c.tagName === node.tagName) : [node];
     parts.unshift(twins.length > 1 ? `${tag}:nth-of-type(${twins.indexOf(node) + 1})` : tag);
@@ -38,7 +45,11 @@ _CSS_PATH = """(el) => {
 
 
 class ActionFailed(Exception):
-    pass
+    """An action could not be done. `kind` says how, for the failure log."""
+
+    def __init__(self, message: str, kind: str = "action_failed"):
+        super().__init__(message)
+        self.kind = kind
 
 
 def snapshot_elements(snapshot: str) -> dict[str, tuple[str, str | None]]:
@@ -97,7 +108,7 @@ class BrowserSession:
         except PlaywrightError:
             found = False
         if not found:
-            raise ActionFailed(f"ref {ref} is not in the current page snapshot")
+            raise ActionFailed(f"ref {ref} is not in the current page snapshot", kind="bad_ref")
         return locator
 
     def durable_locators(self, ref: str, element: PageLocator) -> tuple[list[Locator], str]:
@@ -131,7 +142,9 @@ class BrowserSession:
             if locator.count() == 1:
                 return locator
             timeout = FALLBACK_TIMEOUT_MS
-        raise ActionFailed(f"could not find {action.label or 'the element'} to {action.type}")
+        first = action.target[0] if action.target else None
+        named = f'{first.role} "{first.name}"' if first and first.by == "role" and first.name else first.role if first and first.by == "role" else None
+        raise ActionFailed(f"could not find {action.label or named or 'the element'} to {action.type}", kind="element_not_found")
 
     def perform(self, action: Action, element: PageLocator | None = None) -> None:
         """Carry out an action at once. Raises `ActionFailed` if it cannot be done."""

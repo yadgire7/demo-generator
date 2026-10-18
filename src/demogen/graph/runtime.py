@@ -141,6 +141,8 @@ class Runtime:
             raise RunError("send either an edited file or feedback, not both")
         if feedback and kind != "playbook":
             raise RunError(f"feedback in words is only taken for a drafted playbook; to change the {kind}, send an edited copy of it")
+        if feedback and not status.state.get("prompt_src"):
+            raise RunError("this run was started from a playbook file, so there is no draft to redo; send an edited copy of the playbook instead")
         artifact = self._store_edit(run_id, kind, edit) if edit is not None else None
         return {"kind": "approve", "decision": {"artifact": artifact, "feedback": feedback.strip() if feedback else None}}
 
@@ -149,6 +151,8 @@ class Runtime:
         ctx = self.context(run_id)
         if kind == "playbook":
             parse_playbook(edit)  # the author's own file is kept as they wrote it, once it is known to be valid
+            if edit.lstrip().startswith("{"):  # sent as JSON, as the app does: kept as YAML, for people to read
+                edit = yaml.safe_dump(yaml.safe_load(edit), sort_keys=False, allow_unicode=True, width=100)
             return ctx.store.put_bytes("playbook.yaml", edit.encode())
         path, schema = EDITABLE[kind]
         edited = schema.model_validate(yaml.safe_load(edit))
