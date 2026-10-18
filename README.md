@@ -1,21 +1,174 @@
 # demogen
 
-Turn a YAML playbook and an author's brief into a narrated product-demo video.
+[![GitHub stars](https://img.shields.io/github/stars/yadgire7/demo-generator?style=social)](https://github.com/yadgire7/demo-generator/stargazers)
+
+[![Tests](https://github.com/yadgire7/demo-generator/actions/workflows/tests.yml/badge.svg)](https://github.com/yadgire7/demo-generator/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Describe a demo in a sentence, or write a playbook, and get a narrated product-demo video: an
+LLM rehearses the steps in a real browser, the clicks are replayed on camera, the footage is
+narrated to fit, voiced, and edited with zoom, pointer and captions. You review the playbook,
+the clicks and the narration before each is used.
+
+![A demo demogen made of Larkspur Market, its built-in test shop](docs/media/larkspur-demo.gif)
+
+*Made from one sentence: "Search for a navy t-shirt, open the Crewneck T-Shirt, choose size L,
+add it to the cart, and check out as a guest with the test card." Shown here at double speed
+and silent; the real video is 47 seconds, narrated and captioned.*
 
 The design, the research behind it and the milestones are in [docs/design.md](docs/design.md).
 
-## Status: M5 (service), in progress
+## Quickstart
 
-From the command line, a run goes all the way: it rehearses the playbook in a real browser,
+You need Python 3.11+, `ffmpeg` and an Anthropic API key (or any model LiteLLM supports).
+
+```bash
+git clone https://github.com/yadgire7/demo-generator && cd demo-generator
+python3 -m venv .venv && .venv/bin/pip install -e ".[voice]"
+.venv/bin/playwright install chromium
+cp demogen.example.yaml demogen.yaml
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+```
+
+Then start the test shop and the app, in two terminals:
+
+```bash
+.venv/bin/demogen shop     # Larkspur Market, at http://127.0.0.1:8400
+```
+
+```bash
+.venv/bin/demogen ui       # opens the app in your browser
+```
+
+In the app, choose **Describe a demo**, set **Starts at** to `http://127.0.0.1:8400`, and
+describe what to show. A video like the one above costs about $0.50 in model calls with
+Claude Opus.
+
+## System design
+
+Three ways in share one control plane. Each change to a run is checked and stored first, then a
+LangGraph graph advances the run until it pauses for a review or finishes, checkpointing as it
+goes so any run can be resumed, rerun from a stage, or picked up by another worker.
+
+```mermaid
+flowchart TB
+  subgraph entry["Ways in"]
+    direction LR
+    CLI["demogen CLI<br/>run · approve · resume · rerun"]
+    APP["demogen ui<br/>local web app"]
+    API["HTTP API<br/>(service, token)"]
+  end
+
+  subgraph control["Control plane"]
+    direction LR
+    RT["Runtime<br/>prepare, then advance"]
+    G["LangGraph graph<br/>stages, review pauses, loops"]
+    CP[("Checkpoints<br/>SQLite or Postgres")]
+  end
+
+  subgraph exec["Execution"]
+    direction LR
+    LX["Local executor<br/>(in process)"]
+    QX["Queue executor<br/>(Procrastinate)"]
+    WK["Worker pools<br/>browser · cpu · gpu"]
+  end
+
+  subgraph stages["Stages: plain functions over artifact refs"]
+    ST["draft · rehearse · record · analyze<br/>write · voice · plan · render · QA"]
+  end
+
+  subgraph store["Storage"]
+    direction LR
+    AS[("Artifacts<br/>run folder or S3")]
+    SC[("Stage cache<br/>content-addressed")]
+    FL[("Fail points<br/>failures/ + screenshots")]
+  end
+
+  subgraph ext["Models and tools"]
+    direction LR
+    LLM["LLMs<br/>Anthropic · LiteLLM"]
+    PW["Playwright Chromium<br/>+ screen recorder"]
+    TTS["Kokoro TTS"]
+    STT["faster-whisper STT"]
+    FF["ffmpeg compositor"]
+  end
+
+  WEB(["Target web app<br/>e.g. Larkspur Market"])
+  OT["OpenTelemetry traces"]
+
+  CLI --> RT
+  APP --> RT
+  API --> RT
+  RT --> G
+  G <--> CP
+  G --> LX
+  G --> QX
+  QX --> WK
+  LX --> ST
+  WK --> ST
+  ST <--> AS
+  ST <--> SC
+  ST --> FL
+  ST --> LLM
+  ST --> PW
+  PW --> WEB
+  ST --> TTS
+  ST --> STT
+  ST --> FF
+  G -.-> OT
+  ST -.-> OT
+```
+
+The pipeline a run goes through. The hexagons are the three reviews, where the run waits for
+you (or goes straight through with auto-approve):
+
+```mermaid
+flowchart TD
+  PR["Prompt"] --> DR["draft_playbook<br/>(LLM)"]
+  DR --> RP{{"Review: playbook"}}
+  RP -- "changes in words" --> DR
+  PB["Playbook YAML"] --> LV
+  RP -- "approve or edit" --> LV["load_validate"]
+  LV --> SU["setup<br/>sign in, unrecorded"]
+  SU --> RH["rehearse<br/>LLM drives the browser,<br/>its actions become the plan"]
+  RH -- "a step cannot be done" --> RP
+  RH --> RC{{"Review: clicks"}}
+  RC --> TK["record_take<br/>replay the plan on camera"]
+  TK -- "a step breaks" --> HL["repair that step<br/>(LLM), take again"]
+  HL --> TK
+  TK --> VT["verify_take"]
+  VT --> KF["extract_keyframes"]
+  KF --> AF["analyze_frames<br/>(vision LLM)"]
+  AF --> WS["write_story<br/>(LLM, sized to each step)"]
+  WS --> RS{{"Review: narration"}}
+  RS --> SY["synthesize_step × steps<br/>(Kokoro, in parallel)"]
+  SY --> QA["qa_audio<br/>(faster-whisper listens back)"]
+  QA --> TL["plan_timeline<br/>fit voice to footage"]
+  TL -- "too long for its footage" --> WS
+  TL --> RN["render<br/>zoom, pointer, ripples, captions, mix"]
+  RN --> FQ["final_qa"]
+  FQ --> OUT[["final.mp4 · captions · report"]]
+  RH -.-> FP[("fail points")]
+  TK -.-> FP
+  HL -.-> FP
+```
+
+## What it does
+
+From the app or the command line, a run goes all the way: it rehearses the playbook in a real browser,
 records a clean take, looks at what the take shows, writes and voices narration sized to each
 step, and renders `final.mp4` with a pointer, click ripples, zoom, captions and the narration
 mixed in. You approve the plan before recording and the story before it is voiced. A run can also
 start from a prompt, with the playbook drafted for you; see [Starting from a prompt](#starting-from-a-prompt).
+Every failure on the way is kept with a screenshot, as data for training computer-use agents;
+see [Fail points](#fail-points).
+
+For most people the easiest way in is the app: `demogen ui` opens it in your browser. See
+[The app](#the-app).
 
 The same pipeline also runs as a service: an HTTP API, a Postgres-backed job queue and worker
 pools, with artifacts in S3-compatible storage. See [Running as a service](#running-as-a-service).
-Runs can be traced with OpenTelemetry; see [Tracing](#tracing). Not built yet: metrics, and
-a tested container setup (the files in `deploy/` are untested).
+Runs can be traced with OpenTelemetry; see [Tracing](#tracing).
 
 How recording works:
 
@@ -72,6 +225,58 @@ How the video is put together:
   narration heard in the final mix matches the story, and whether each passage plays when
   planned. Anything off is listed under `final_check.problems` in `report.json`.
 
+## The app
+
+```bash
+.venv/bin/demogen ui
+```
+
+This starts demogen on `http://127.0.0.1:8765` and opens it in your browser. From there you
+can describe a demo in words or upload a playbook, then check each part before it is made:
+
+- **The playbook**, as one card per step: what to do, what should be visible afterwards, the
+  point to make, and how long to stay on screen. Steps can be reordered, added and removed, or
+  the whole file edited as text. A drafted playbook can also be sent back with changes in words.
+- **The clicks** rehearsal worked out, in plain words ("Type “t-shirt” into the "Search" box"),
+  any of which can be taken out before they are recorded.
+- **The narration**, one line per step beside the frame it is spoken over, with a live word
+  count against the room the footage leaves.
+
+When it is done the video plays in the page, and it is saved to `runs/<run-id>/final.mp4` as
+with the command line. Runs started from the command line show up in the app too, since both
+use the same `runs/` folder; closing the app loses nothing, and a run that was under way can be
+resumed. One demo is made at a time; others wait their turn.
+
+If rehearsal cannot do a step, the run comes back to the playbook with the step marked and the
+reason, so you can change it and rehearse again.
+
+The app only answers on this machine: it listens on 127.0.0.1 and refuses requests addressed
+to any other host name. `--port`, `--config`, `--runs-dir` and `--no-open` change the defaults.
+Try it first with **Try it on the sample store**, which needs no setup beyond the model key.
+
+## Fail points
+
+Every time something goes wrong on the way to a video, demogen keeps it in the run's
+`failures/` folder: a JSON record, a screenshot of the page at that moment, its accessibility
+snapshot and, for the model's own mistakes, the snapshot the model was looking at when it
+acted. That covers the model's mistakes in rehearsal, repair and sign-in (an element no
+longer on the page, evidence that is not there, an action that changed nothing, giving up),
+and every take or replay that broke. Each record says how its step ended: whether the agent
+recovered from the mistake, gave up, or stopped the run there.
+
+They explain a stopped run (the app shows what the browser was showing, and `demogen status`
+names the screenshot), and they are meant to be gathered as training data for computer-use
+agents:
+
+```bash
+.venv/bin/demogen failures --out failures.jsonl        # every run; or name runs to export
+```
+
+One JSON object per line (schema `demogen.failure/1`, described in
+[src/demogen/failures.py](src/demogen/failures.py)); its `files` are relative to its run's
+folder. Snapshots and messages are passed through the playbook's secret redactor, so typed
+credentials appear only as `${secret:NAME}`; a screenshot shows the screen as it was.
+
 ## Starting from a prompt
 
 You do not have to write the playbook yourself. Describe the demo and one is drafted for you:
@@ -99,6 +304,37 @@ Good to know:
 - **Feedback in words works only at this pause.** The plan and the story are changed by
   sending an edited file.
 
+## Larkspur Market: a test shop
+
+`demogen shop` runs Larkspur Market on this machine, at `http://127.0.0.1:8400`: a small
+online store with real page addresses, built to make demos of and to test demogen against.
+
+- **Browsing:** departments, search, filters (colour, size, price, in stock), sorting and
+  pages; product pages with colours, sizes (some sold out), quantity, stock and reviews.
+- **Cart:** add, change quantities, remove; free delivery from $50.
+- **Sign-in and account:** a test account (`demo@larkspur.test`, password `larkspur-demo`)
+  with an order history and saved addresses.
+- **Checkout:** delivery, payment and review, with validation errors. Only published test
+  cards are taken: `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002` is declined. No
+  payment is ever taken.
+
+Every control has a proper label, so demogen finds elements by name. Carts and orders belong
+to the browser's session, so each fresh browser (which is what demogen opens for rehearsal and
+for the take) meets the same shop: an empty cart, and a first order numbered 1001.
+`POST /__reset` puts every session back to that, still signed in; use it as a playbook's
+`setup.seed` when the playbook signs in during setup, since that browser's cookies carry over.
+
+```bash
+.venv/bin/demogen shop
+```
+
+```bash
+.venv/bin/demogen run --url http://127.0.0.1:8400 --prompt "Search for a navy t-shirt, open the Crewneck T-Shirt, choose size L, add it to the cart, and check out as a guest with the test card"
+```
+
+Or start from [examples/playbooks/larkspur.yaml](examples/playbooks/larkspur.yaml), or give the
+same prompt and address to the app (`demogen ui`).
+
 ## A sample store to try it on
 
 `examples/shop` is a small self-contained store, Harbour Goods, with search, colour and size
@@ -118,7 +354,21 @@ search for a t-shirt, choose Navy and size Large, add it to the cart and open th
 
 Public sites built for automation practice also work; the Toolshop at
 practicesoftwaretesting.com has been run end to end. Sites that guard against automated
-browsing, Amazon among them, are not workable targets.
+browsing are not workable targets, and demogen does not try to get past their checks.
+
+## Known limitations
+
+- **Web apps only.** Desktop apps are designed for but not built.
+- **Sites that block automation do not work.** Bot checks stop rehearsal, and demogen does not
+  try to get past them. Use your own app, staging, sites built for automation practice, or
+  the bundled test shops.
+- **Narration can run ahead of the picture** within a long step: each passage starts when its
+  step starts, so a step with many actions may describe its result before it appears. Short,
+  one-outcome steps avoid it.
+- **Weak checks.** Rehearsal sometimes picks evidence that was on the page before the step.
+- **Tested on macOS** with Chromium. Linux runs the test suite in CI; Windows is untried.
+- **Untested:** the container files in `deploy/`, AWS S3 itself (MinIO is tested), and more
+  than one worker machine. Not built: metrics, per-user access.
 
 ## Requirements
 
@@ -228,12 +478,20 @@ Processes report as `demogen-cli`, `demogen-api` and `demogen-worker`; `OTEL_SER
 overrides that. Every request is traced, so a client that polls run status often will
 produce a steady stream of small API traces; sample at the collector if that matters.
 
+## Star history
+
+[![Star history chart](https://api.star-history.com/svg?repos=yadgire7/demo-generator&type=Date)](https://www.star-history.com/#yadgire7/demo-generator&Date)
+
 ## Layout
 
 - `src/demogen/stages/`: the pipeline's stages, as plain functions over artifact references.
 - `src/demogen/exec/`: where stages run (in this process, or queued to a worker pool).
 - `src/demogen/service/`: the HTTP API, the worker tasks and the list of runs.
+- `src/demogen/ui/`: the app (`demogen ui`): its web server, the one-machine backend, the
+  review screens' data, and the page itself in `static/` (plain HTML, CSS and JavaScript).
 - `src/demogen/telemetry.py`: tracing; a no-op until the environment turns it on.
+- `src/demogen/failures.py`: the fail-point log, and reading it back for export.
+- `src/demogen/testshop/`: Larkspur Market, the test shop (`demogen shop`).
 - `src/demogen/graph/`: the LangGraph control plane. Nothing else imports LangGraph.
 - `src/demogen/llm/`: the provider-neutral LLM interface, the tool loop, and the Anthropic and
   LiteLLM adapters.

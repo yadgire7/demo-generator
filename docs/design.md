@@ -10,9 +10,7 @@ The goal is to turn a **YAML playbook** plus an **author's intent** into a finis
 
 The system must work with any LLM provider without being tied to one SDK. It must also be resumable from any stage (LangGraph state, interrupts, resume), and start as a CLI built to grow into a service.
 
-This is a **new standalone repo** (e.g. `~/demo-generator`), not part of `freestyle`.
-
-### Decisions confirmed with the user
+### Decisions
 | Topic | Decision |
 |---|---|
 | Audio | TTS for narration, plus STT (faster-whisper/WhisperX) for QA, word timestamps and captions |
@@ -104,8 +102,8 @@ This is a **new standalone repo** (e.g. `~/demo-generator`), not part of `freest
 
 **Key design consequence.** Stages are already engine-agnostic: plain functions taking and returning artifact refs, idempotent and content-addressed. The engine therefore touches only about one file (`graph/build.py`), and "rerun from stage X with changed inputs" works on *any* engine through the artifact cache. So the choice can be reversed later.
 
-**Decision (confirmed by the user): LangGraph as control plane + a pluggable `StageExecutor`.**
-- LangGraph owns run state (A), where it is strongest and the user already knows it.
+**Decision: LangGraph as control plane + a pluggable `StageExecutor`.**
+- LangGraph owns run state (A), where it is strongest and already familiar.
 - A `StageExecutor` port runs each stage:
   - `LocalExecutor` in v1 (in-process, zero infrastructure).
   - `QueueExecutor` in the service phase (Hatchet, or arq/Redis), which routes `record` to browser workers, `tts`/`stt` to the GPU pool and `render` to the CPU pool. The remote stages are idempotent, so at-least-once delivery is safe and LangGraph stays the single source of truth.
@@ -433,7 +431,7 @@ Recorded as each milestone lands.
 - **Not built:** per-user access, a dashboard.
 
 **Tracing (OpenTelemetry)**
-- **Chosen over Langfuse** by the user. Spans go through one small module, `telemetry.py`;
+- **Chosen over Langfuse**, to stay vendor-neutral. Spans go through one small module, `telemetry.py`;
   only the API package is a core dependency, and the SDK and exporter are an optional extra.
 - **Turned on by the standard environment variables only.** No demogen-specific switch.
 - **One trace per advance of a run, not per run.** A run pauses for a person, sometimes for
@@ -458,23 +456,24 @@ Recorded as each milestone lands.
 - **Two new graph nodes in front of `load_validate`**: `draft_playbook`, and an approval pause
   that also accepts feedback in words and loops back to redraft. A run given a playbook file
   skips both.
-- **The drafter works from the prompt alone**, by the user's choice: it has not seen the site.
+- **The drafter works from the prompt alone**, by choice: it has not seen the site.
   Steps are intent-level, so this is workable; a step the site cannot do surfaces at rehearsal.
 - **The model fills a smaller schema than the playbook's own** (no pinned actions, data
   blocks or setup), which is converted and then checked against the real playbook rules; a
   draft that breaks them goes back to the model with the reasons.
-- **Feedback in words is taken only for the drafted playbook**, by the user's choice. The plan
+- **Feedback in words is taken only for the drafted playbook**, by choice. The plan
   and story pauses still take an edited file.
 - **It uses the `planner` model role**; no new role to configure.
 - **An author's edited playbook is stored as they wrote it**, comments included.
-- **Verified with the real model:** a draft and a feedback-driven redraft for an Amazon
-  shopping prompt (drafting only; nothing was run against Amazon), and a TodoMVC prompt
-  carried through to a finished 21-second video.
+- **Verified with the real model:** a draft and a feedback-driven redraft for a shopping
+  prompt, and a TodoMVC prompt carried through to a finished 21-second video.
 
 **Real-site runs (2026-10-13): what broke, and what was done**
-- **Amazon is not a workable target.** After a few automated sessions it served its "Click
-  the button below to continue shopping" check in place of the home page. The tool does not
-  click through such checks and must not grow ways around them.
+- **Sites that guard against automated browsing are not workable targets.** A large retail
+  site began serving a bot check in place of its home page after a few automated sessions,
+  and such sites' terms usually forbid automated access anyway. The tool does not click
+  through such checks and must not grow ways around them. Use sites built for automation
+  practice, your own app, or the bundled test shops.
 - **Fixed: typed text in the take could differ from rehearsal.** Rehearsal replaced a field's
   value; the take cleared the field and then typed. On the Toolshop the quantity field
   refills itself with 1 when emptied, so typing 2 gave 12, the cart total was wrong, and the
@@ -493,11 +492,11 @@ Recorded as each milestone lands.
   visible when the step began could be refused.
 - **Open: repair attempts are wasted on failures re-rehearsal cannot fix.** The typing bug
   cost two repairs and three takes before the run gave up.
-- **Open: locators anchored on per-load random ids**, seen in an Amazon plan for a link with
-  no accessible name; not yet reproduced in a take.
-- **Open: nothing is saved when a step fails** (no screenshot), and command-line runs do not
-  keep the error that stopped them.
-- **Open: a drafted playbook that fails rehearsal cannot take feedback** with the reason.
+- **Fixed since: locators anchored on per-load random ids** (see below).
+- **Fixed since: nothing was saved when a step failed.** Runs keep the error that stopped them
+  in `status.json`, and every failure is kept with a screenshot (see below).
+- **Fixed since: a playbook that fails rehearsal** now comes back for review with the reason
+  (see the local app notes below); a drafted one can take feedback.
 - **Open: narration starts when its step starts**, so a passage can describe a result a
   second or two before the click that produces it.
 - **Measured cost** at Opus 5.5 list prices: about $0.65 for the Toolshop run (including the
@@ -505,6 +504,91 @@ Recorded as each milestone lands.
   run (including one repeated rehearsal).
 - **Added: `examples/shop`**, a self-contained sample store with search, colour and size
   options and a cart, and `examples/playbooks/shop.yaml`.
+
+**The local app (2026-10-15)**
+- **What it is.** `demogen ui` serves a small web app on 127.0.0.1:8765 for people who should
+  never have to open a JSON file: start a demo from words or an uploaded playbook, review the
+  playbook, the plan and the story, watch progress, and get the video. It is a web app served
+  by demogen itself (no Node.js build), with rich editing at each review, one run at a time
+  with a queue, and a failed rehearsal returning to the playbook review.
+- **One API, two backends.** `service/api.py` now takes a `Backend` (runtime, run list,
+  submit, busy, describe, delete, reveal). The service's Procrastinate-backed `Service` is one;
+  `ui/local.py`'s `LocalBackend` is the other: `Runtime.local(runs/)`, a queue and one worker
+  thread. The run list is read from the run folders, each with a `status.json` (name, start,
+  finish, last error), so command-line runs appear in the app and a restart loses nothing; a
+  run that was under way when the app stopped shows as interrupted, with Resume. New
+  endpoints serve both: the review screens' data (`GET /runs/{id}/review`: steps, actions in
+  plain words, passages with their word budgets and keyframes), a playbook check, delete,
+  reveal in the file manager (local only), a poster frame, and a health check naming what to
+  fix. `POST /runs` takes `options` (JSON) laid over the default settings.
+- **No token locally.** The local server binds to 127.0.0.1 and refuses any request whose
+  `Host` is not localhost, which also defeats DNS rebinding from a web page. The service still
+  requires its token.
+- **A failed rehearsal is a review, not a crash.** When the model reports a step cannot be
+  done, `rehearse` returns the failure instead of raising; the graph routes it to
+  `approve_playbook`, which pauses even with `auto_approve`, carrying the step and reason. A
+  `rehearsal_attempt` counter keeps an unchanged re-approval from being answered from the
+  cache. Feedback in words is refused for an uploaded playbook (there is no draft to redo).
+  Browser and model errors still stop the run.
+- **Validation errors in plain words.** Pydantic's messages are turned into one line per
+  problem, naming the step ("step 2 › do: is missing").
+- **Tests.** API tests over the local backend with stand-in stages, and a Playwright test that
+  takes a demo from description to video in the app with an edit at every review and reloads
+  mid-run.
+
+**Locators and fail points (2026-10-15)**
+- **What broke.** A run on a real retail site stopped at the take. Rehearsal had clicked a
+  search result's picture, a link with no accessible name, so its only locator was a CSS path
+  anchored on `#86625a76-…`, an id the site generates on every load; the take could not find it.
+  The repair then opened a fresh browser and could not find the search box on the first step,
+  by role or by its stable id, minutes after both had worked: most likely a bot check served
+  to a fresh automated session. Nothing recorded the page, and the error named the repair's
+  failure only, under the broken step's name.
+- **Locators.** The CSS path builder passes over ids and test ids that look generated (UUIDs,
+  React's useId, runs of four or more digits, long letter-and-digit hashes). In rehearsal an
+  element with no accessible name is questioned once: the model is asked for a named element
+  that does the same (a product's title link rather than its picture), and may repeat the
+  action to use the unnamed one anyway. The `rehearse` stage is at version 2 for this.
+- **Fail points.** These runs are meant to seed training data for computer-use agents, with
+  the failures usable in RL. So every failure is a record in `failures/` with its
+  context, not a log line: the task, the step and what earlier steps did, the action and the
+  model's tool call as made, the snapshot the model chose from, a screenshot and snapshot of
+  the page at the failure, the take or repair attempt, and the step's outcome (`resolved`
+  when the agent recovered, `unresolved`, or `failed` when the run stopped there). Recorded:
+  the model's mistakes in rehearsal, repair and setup (via an `on_error` hook in the tool loop,
+  with a `kind` on `ToolError` and `ActionFailed`), actions that changed nothing, giving up,
+  running out of turns, every broken take step, and every failed replay before a repair.
+  `demogen failures` exports them as JSON Lines; the API serves them at
+  `GET /runs/{id}/failures`; the app shows the last one's screenshot on a stopped run. Each
+  is also an OpenTelemetry span event. Successful steps are not recorded as trajectories yet:
+  a record carries what came before it only as the earlier steps' instructions.
+- **Errors say both things.** A failed repair now reports the take's own failure and then
+  the repair's, and, when a step that had worked cannot be replayed, says the site may be
+  showing this browser a different page.
+
+**Larkspur Market, the test shop (2026-10-15)**
+- **Why.** The sample store (`examples/shop`) is one static page with hash routes and no server
+  state. Demos and computer-use training data need a fuller store: a server-backed shop with
+  sign-in and account, a test-card checkout, and browsing with filters, sorting and pages,
+  started by `demogen shop`. Deliberately tricky UI
+  (banners, modals, delayed elements) is left out for now.
+- **How.** `src/demogen/testshop/`: FastAPI with Jinja2 pages rendered on the server and plain
+  HTML forms, so every step is a real navigation with a real address; a small script only
+  swaps the product picture with the colour and hides unused address fields. A fixed catalog
+  of 29 products, pictures drawn as SVG, no network. Labels throughout, a single named link
+  per product card, sold-out sizes named "XS, sold out", and no two links with the same name
+  on a page (the "Home" department became "Home & Kitchen").
+- **Same shop for every browser.** Cart, checkout and the orders placed belong to the
+  session, so rehearsal and the take, each in a fresh browser, see identical pages: an empty
+  cart and order 1001. A playbook that signs in during setup reuses that browser's cookies
+  across stages, so `POST /__reset` returns every session to a fresh start, keeping sign-ins;
+  it is the playbook's `setup.seed`.
+- **Payments.** Only the published test cards are accepted (4242… succeeds, 4000…0002 is
+  declined at "Place order"); any other number, valid or not, is refused.
+- **Dependencies.** FastAPI, uvicorn, python-multipart and Jinja2 are now core dependencies;
+  they were only in the `service` extra, so `demogen ui` failed on a plain install.
+- **Tests.** The flows through the server, a guest purchase in a real browser, and a demogen
+  take of the whole purchase with pinned actions.
 
 ## Sources
 [aidemo](https://github.com/tandryukha/aidemo) · [ai-demo-generator-oss](https://github.com/grodriguez1983/ai-demo-generator-oss) · [Playwright 1.59 release](https://github.com/microsoft/playwright/releases/tag/v1.59.0) · [Playwright recordVideo bitrate issue #31424](https://github.com/microsoft/playwright/issues/31424) · [Puppeteer ScreenRecorder](https://app.unpkg.com/puppeteer-core@25.4.0/files/src/node/ScreenRecorder.ts) · [Playwright MCP vs CLI](https://morphllm.com/playwright-mcp) · [Stagehand/browser-use comparison](https://www.pkgpulse.com/guides/stagehand-vs-playwright-ai-vs-browser-use-ai-web-2026) · [Xvfb + ffmpeg recording](https://kroket.io/blog/recording-headless-firefox.html) · [LangGraph HITL](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) · [LangGraph vs Temporal](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) · [LiteLLM vs LangChain](https://toolhalla.ai/compare/langchain-vs-litellm) · [Open TTS 2026](https://pinggy.io/blog/best_open_source_self_hosted_text_to_speech_models/) · [Open-weight TTS licenses](https://builderai.tools/blog/open-weight-text-to-speech-models-2026) · [WhisperX](https://arxiv.org/abs/2303.00747v1) · [Parakeet vs Whisper](https://openwhispr.com/blog/parakeet-vs-whisper-vs-nemotron) · [Frame sampling for VLMs](https://arxiv.org/pdf/2509.14769) · [Remotion vs ffmpeg](https://thegtmdirectory.com/compare/ffmpeg-vs-remotion) · [rrweb limits (Browserbase)](https://browserbase.com/blog/session-recordings) · [Durable engines compared (Upstash)](https://upstash.com/blog/durable-workflow-engines-compared-every-major-option-in-2026) · [Restate/DBOS/Hatchet beyond Temporal](https://cloudrps.com/blog/durable-execution-restate-dbos-hatchet-beyond-temporal/) · [DBOS workflows](https://docs.dbos.dev/python/tutorials/workflow-tutorial) · [DBOS pricing](https://www.dbos.dev/dbos-pricing) · [Temporal Cloud pricing](https://docs.temporal.io/cloud/pricing) · [Temporal self-host cost](https://automationatlas.io/guides/temporal-cloud-vs-self-hosted-2026/) · [Hatchet v1](https://hn.svelte.dev/item/43572733) · [Prefect pause/resume](https://docs.prefect.io/v3/develop/pause-resume) · [Burr persistence](https://burr.apache.org/concepts/state-persistence/) · [pydantic-graph persistence](https://ai.pydantic.dev/api/pydantic_graph/persistence) · [LlamaIndex durable workflows](https://developers.llamaindex.ai/python/workflows/durable_workflows/) · [LangGraph checkpointing postmortem](https://pub.towardsai.net/langgraph-checkpointing-is-not-free-a-production-postmortem-398bc86861f4) · [LangGraph Platform pricing](https://www.langchain.com/langgraph-platform-pricing)

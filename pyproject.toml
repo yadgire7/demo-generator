@@ -7,6 +7,11 @@ name = "demogen"
 version = "0.1.0"
 description = "Turn a YAML playbook and an author's intent into a narrated product-demo video."
 requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Saurabh Yadgire" }]
+keywords = ["demo-video", "playwright", "langgraph", "llm", "computer-use", "tts"]
 dependencies = [
   "langgraph>=1.2",
   "langgraph-checkpoint-sqlite>=3.1",
@@ -26,6 +31,10 @@ dependencies = [
   "python-multipart>=0.0.9",
   "jinja2>=3.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/yadgire7/demo-generator"
+Issues = "https://github.com/yadgire7/demo-generator/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "opentelemetry-sdk>=1.27"]
