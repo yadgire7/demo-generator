@@ -8,6 +8,24 @@ from demogen.errors import DemogenError
 from demogen.voice.audio import float_to_wav
 
 SAMPLE_RATE = 24000
+# espeak-ng, which Kokoro uses for pronunciation, keeps its data folder's path in a fixed buffer.
+# A longer path is silently replaced by one that does not exist, and espeak-ng then ends the
+# whole process. Paths at or past this length are refused with an explanation instead.
+ESPEAK_MAX_PATH = 160
+
+
+def _check_espeak_path() -> None:
+    try:
+        import espeakng_loader
+    except ImportError:
+        return
+    path = espeakng_loader.get_data_path()
+    if len(path) >= ESPEAK_MAX_PATH:
+        raise DemogenError(
+            f"Kokoro cannot start: the path to its pronunciation data is {len(path)} characters long, and "
+            f"espeak-ng only accepts paths under {ESPEAK_MAX_PATH} ({path}). "
+            "Move the project, or its virtual environment, to a folder with a shorter path."
+        )
 
 
 class KokoroTTS:
@@ -24,6 +42,7 @@ class KokoroTTS:
                 from kokoro import KPipeline
             except ImportError as error:
                 raise DemogenError("Kokoro is not installed. Install it with: pip install 'demogen[voice]'") from error
+            _check_espeak_path()
             self._pipelines[language] = KPipeline(lang_code=language, repo_id=self.repo_id)
         return self._pipelines[language]
 

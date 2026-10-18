@@ -42,3 +42,14 @@ def test_passages_are_voiced_checked_and_timed(harness, playbook, tmp_path):
         assert starts == sorted(starts) and timed[0]["start"] < 0.3 and timed[-1]["end"] <= clip["duration"] + 0.05
     assert h.json("r1", "report.json")["audio_warnings"] == []
     assert h.json("r1", "edl.json")["steps"][0]["audio_duration"] == status.state["clips"]["add-first"]["duration"]
+
+
+def test_a_pronunciation_data_path_espeak_cannot_take_is_refused_with_a_reason(monkeypatch):
+    import espeakng_loader
+
+    from demogen.errors import DemogenError
+    from demogen.voice.tts.kokoro import KokoroTTS
+
+    monkeypatch.setattr(espeakng_loader, "get_data_path", lambda: "/very/deep/" + "folder/" * 25 + "espeak-ng-data")
+    with pytest.raises(DemogenError, match="shorter path"):
+        KokoroTTS().synthesize("Hello.", voice="af_heart", speed=1.0)

@@ -366,6 +366,9 @@ browsing are not workable targets, and demogen does not try to get past their ch
   step starts, so a step with many actions may describe its result before it appears. Short,
   one-outcome steps avoid it.
 - **Weak checks.** Rehearsal sometimes picks evidence that was on the page before the step.
+- **Keep the install path short.** espeak-ng, which the default voice uses for pronunciation,
+  cannot read its data from a path of 160 characters or more; demogen stops with an
+  explanation if the virtual environment sits that deep.
 - **Tested on macOS** with Chromium. Linux runs the test suite in CI; Windows is untried.
 - **Untested:** the container files in `deploy/`, AWS S3 itself (MinIO is tested), and more
   than one worker machine. Not built: metrics, per-user access.
