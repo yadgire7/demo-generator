@@ -1,5 +1,6 @@
 import json
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -14,6 +15,8 @@ def test_run_approve_approve(pinned_playbook, scripted_llm, tmp_path):
 
     Only the story models are scripted.
     """
+    pytest.importorskip("kokoro")  # the real speech engines come with the `voice` extra
+    pytest.importorskip("faster_whisper")
     scripted_llm.replies = [
         {"steps": [{"step_id": s, "happens": "It changes.", "on_screen": []} for s in ("add-task", "finish-task")]},
         {"steps": [{"step_id": "add-task", "text": "Add a task."}, {"step_id": "finish-task", "text": "Done."}]},
